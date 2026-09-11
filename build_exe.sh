@@ -13,22 +13,29 @@ else
 fi
 
 echo "[2/4] Устанавливаем зависимости..."
-python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
-python -m pip install pyinstaller Pillow
+python3 -m pip install --upgrade pip
+python3 -m pip install -r requirements.txt
+python3 -m pip install pyinstaller Pillow
 
 echo "[3/4] Генерируем flick.ico..."
-[ -f flick.ico ] || python make_icon.py
+if [ ! -f flick.ico ]; then
+    python3 make_icon.py
+fi
 
 echo "[4/4] Собираем бинарник..."
-pyinstaller --noconfirm --clean \
+pyinstaller \
+    --noconfirm \
+    --clean \
     --onefile \
     --windowed \
-    --name Flick \
+    --name Flick.exe \
     --icon flick.ico \
+    --distpath dist \
+    --workpath build \
+    --specpath . \
     main.py
 
 echo
 echo "============================================"
-echo "Готово! Файл: dist/Flick"
+echo "Готово: dist/Flick.exe"
 echo "============================================"
