@@ -11,6 +11,8 @@ on:
 jobs:
   make_realse:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: checkout
         uses: actions/checkout@v7.0.1
