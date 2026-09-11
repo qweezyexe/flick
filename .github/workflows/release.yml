@@ -16,7 +16,7 @@ jobs:
         uses: actions/checkout@v7.0.1
     
       - name: build
-        run: chmod + x build_exe.sh && ./build_exe.sh
+        run: chmod +x build_exe.sh && ./build_exe.sh
 
       - name: Create tag
         run: |
