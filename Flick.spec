@@ -1,9 +1,4 @@
 # -*- mode: python ; coding: utf-8 -*-
-from PyInstaller.utils.hooks import collect_submodules
-
-hiddenimports = ['pynput.keyboard._win32', 'pynput.mouse._win32']
-hiddenimports += collect_submodules('pynput')
-hiddenimports += collect_submodules('dxcam')
 
 
 a = Analysis(
@@ -11,11 +6,11 @@ a = Analysis(
     pathex=[],
     binaries=[],
     datas=[],
-    hiddenimports=hiddenimports,
+    hiddenimports=[],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=['tkinter', 'PySide6.QtWebEngineCore', 'PySide6.QtQuick', 'PySide6.Qt3DCore'],
+    excludes=[],
     noarchive=False,
     optimize=0,
 )
@@ -24,13 +19,16 @@ pyz = PYZ(a.pure)
 exe = EXE(
     pyz,
     a.scripts,
+    a.binaries,
+    a.datas,
     [],
-    exclude_binaries=True,
     name='Flick',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
+    upx_exclude=[],
+    runtime_tmpdir=None,
     console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
@@ -38,13 +36,4 @@ exe = EXE(
     codesign_identity=None,
     entitlements_file=None,
     icon=['flick.ico'],
-)
-coll = COLLECT(
-    exe,
-    a.binaries,
-    a.datas,
-    strip=False,
-    upx=True,
-    upx_exclude=[],
-    name='Flick',
 )
