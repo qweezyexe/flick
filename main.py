@@ -40,9 +40,9 @@ from pynput import keyboard
 CONFIG_PATH = Path.home() / ".config" / "flick" / "config.json"
 
 DEFAULT_HOTKEYS = {
-    "screenshot":       "<f7>",     # открыть оверлей
-    "fullscreen_copy":  "<f8>",     # весь экран → буфер
-    "fullscreen_save":  "<f9>",     # весь экран → файл
+    "screenshot":       "<f7>",
+    "fullscreen_copy":  "<f8>",
+    "fullscreen_save":  "<f9>",
 }
 
 HOTKEY_LABELS = {
@@ -77,7 +77,6 @@ def config_load():
     except Exception:
         return cfg
 
-    # миграция старого формата: {"hotkey": "<f7>"} -> {"hotkeys": {...}}
     if "hotkey" in data and "hotkeys" not in data:
         data["hotkeys"] = dict(DEFAULT_HOTKEYS)
         data["hotkeys"]["screenshot"] = data.pop("hotkey")
@@ -219,7 +218,6 @@ QWidget#Root {{
                  "SF Pro Display", Inter, sans-serif;
 }}
 
-/* ─── Прозрачный скролл ─── */
 QScrollArea {{
     background: transparent;
     border: none;
@@ -249,7 +247,6 @@ QScrollBar::sub-page:vertical {{
     background: transparent;
 }}
 
-/* ─── Заголовок окна ─── */
 QFrame#TitleBar {{
     background: transparent;
 }}
@@ -284,7 +281,6 @@ QPushButton#CloseBtn:pressed {{
     background: #d94b43;
 }}
 
-/* ─── Карточки ─── */
 QFrame#Card {{
     background: rgba(26, 20, 40, 0.72);
     border: 1px solid {BORDER};
@@ -297,7 +293,6 @@ QFrame#HeroCard {{
     border-radius: 20px;
 }}
 
-/* ─── Заголовки внутри карточек ─── */
 QLabel#SectionLabel {{
     color: {TEXT};
     font-size: 12px;
@@ -333,7 +328,6 @@ QLabel#HotkeyLabel {{
     background: transparent;
 }}
 
-/* ─── Hero card ─── */
 QLabel#HeroName {{
     color: #ffffff;
     font-size: 26px;
@@ -363,7 +357,6 @@ QLabel#HeroBadge {{
     letter-spacing: 0.03em;
 }}
 
-/* ─── Поля ввода ─── */
 QLineEdit {{
     background: rgba(15, 11, 22, 0.75);
     border: 1px solid {BORDER};
@@ -383,14 +376,12 @@ QLineEdit:focus {{
     border: 1px solid {ACCENT};
     background: rgba(15, 11, 22, 0.95);
 }}
-/* Поле в режиме записи — ярко-фиолетовая рамка */
 QLineEdit[recording="true"] {{
     border: 2px solid {ACCENT_HOVER};
     background: rgba(168, 85, 247, 0.15);
     color: #ffffff;
 }}
 
-/* ─── Кнопки ─── */
 QPushButton {{
     background: rgba(45, 36, 56, 0.7);
     border: 1px solid {BORDER};
@@ -434,7 +425,6 @@ QPushButton#Browse:hover {{
     border: 1px solid {ACCENT};
     color: {ACCENT_HOVER};
 }}
-/* Кнопка "×" рядом с полем хоткея */
 QPushButton#ClearHotkey {{
     background: rgba(45, 36, 56, 0.7);
     border: 1px solid {BORDER};
@@ -480,14 +470,13 @@ QMenu::separator {{
 
 
 # ═══════════════════════════════════════════════════════════════════
-#  ЗАХВАТ ЭКРАНА (работает в играх через dxcam)
+#  ЗАХВАТ ЭКРАНА
 # ═══════════════════════════════════════════════════════════════════
 
-_dxcam_instance = None   # None = не пробовали, False = не получилось, объект = готов
+_dxcam_instance = None
 
 
 def _get_dxcam():
-    """Ленивая инициализация dxcam (для захвата игр)."""
     global _dxcam_instance
     if _dxcam_instance is not None:
         return _dxcam_instance if _dxcam_instance is not False else None
@@ -502,17 +491,26 @@ def _get_dxcam():
 
 
 def capture_fullscreen() -> QPixmap:
-    """Захват всего экрана. Приоритет — dxcam (DXGI), фолбэк — mss (GDI).
+    """Захват экрана. Сначала mss (надёжно), потом dxcam (для игр)."""
+    # 1) mss — работает везде
+    try:
+        with mss.mss() as sct:
+            mon = sct.monitors[0]
+            shot = sct.grab(mon)
+            img = QImage(
+                shot.raw, shot.width, shot.height,
+                shot.width * 4, QImage.Format_RGB32,
+            ).copy()
+            return QPixmap.fromImage(img)
+    except Exception as e:
+        print("mss error:", e)
 
-    Возвращает QPixmap или None при полной неудаче.
-    """
-    # 1) dxcam — работает в играх DirectX/Vulkan
+    # 2) dxcam — фолбэк для игр
     cam = _get_dxcam()
     if cam is not None:
         try:
             frame = cam.grab()
             if frame is None:
-                # самый первый grab бывает пустым — короткая пауза
                 import time
                 time.sleep(0.05)
                 frame = cam.grab()
@@ -525,19 +523,6 @@ def capture_fullscreen() -> QPixmap:
                 return QPixmap.fromImage(img)
         except Exception as e:
             print("dxcam grab error:", e)
-
-    # 2) mss — фолбэк (Windows GDI / X11 / macOS CoreGraphics)
-    try:
-        with mss.mss() as sct:
-            mon = sct.monitors[0]
-            shot = sct.grab(mon)
-            img = QImage(
-                shot.raw, shot.width, shot.height,
-                shot.width * 4, QImage.Format_RGB32,
-            ).copy()
-            return QPixmap.fromImage(img)
-    except Exception as e:
-        print("mss error:", e)
 
     return None
 
@@ -814,18 +799,18 @@ class Overlay(QWidget):
         self.number_counter = 1
         self.number_size = cfg.get("number_size", 18)
 
+        # Обычное окно без рамки, поверх всех.
+        # БЕЗ WA_TranslucentBackground — иначе на Windows клики
+        # уходят в окна под оверлеем.
         self.setWindowFlags(
-            Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool
+            Qt.Window | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
         )
-        self.setAttribute(Qt.WA_TranslucentBackground)
         self.setFocusPolicy(Qt.StrongFocus)
         self.setCursor(Qt.CrossCursor)
         self.setMouseTracking(True)
 
-        # Единый захват — работает в играх
         bg = capture_fullscreen()
 
-        # Геометрия — весь виртуальный экран
         geo = QRect()
         for s in QGuiApplication.screens():
             geo = geo.united(s.geometry())
@@ -852,6 +837,17 @@ class Overlay(QWidget):
         self.drag_offset = QPoint(0, 0)
         self.drag_moved = False
 
+        # Защита от повторных mousePress во время drag
+        self._mouse_pressed = False
+
+    # ─── Фокус ───
+    def showEvent(self, e):
+        super().showEvent(e)
+        self.raise_()
+        self.activateWindow()
+        self.setFocus(Qt.ActiveWindowFocusReason)
+
+    # ─── Paint ───
     def paintEvent(self, e):
         p = QPainter(self)
         p.drawPixmap(0, 0, self.bg)
@@ -1017,6 +1013,10 @@ class Overlay(QWidget):
         return None
 
     def mousePressEvent(self, e):
+        if self._mouse_pressed:
+            return
+        self._mouse_pressed = True
+
         pos = e.position().toPoint()
 
         if e.button() == Qt.RightButton:
@@ -1107,6 +1107,8 @@ class Overlay(QWidget):
             self.update()
 
     def mouseReleaseEvent(self, e):
+        self._mouse_pressed = False
+
         if self.drag_item is not None:
             self.drag_item = None
             self._refresh_cursor()
@@ -1324,8 +1326,9 @@ class Overlay(QWidget):
         y = sel.top() - th - 10
         if y < 8:
             y = sel.bottom() + 10
-        self.toolbar.move(x, y - 12)
+        self.toolbar.move(x, y)
         self.toolbar.show()
+        self.toolbar.raise_()
 
         pos_anim = QPropertyAnimation(self.toolbar, b"pos", self.toolbar)
         pos_anim.setDuration(220)
@@ -1558,13 +1561,6 @@ class BlobBackground(QWidget):
 # ═══════════════════════════════════════════════════════════════════
 
 class HotkeyEdit(QLineEdit):
-    """Поле для записи комбинации.
-
-    Кликните — поле переходит в режим записи (яркая рамка).
-    Пока держите Ctrl+Shift — показывается живой превью.
-    Отпустите на кнопке — комбинация фиксируется.
-    Esc или клик вне — отмена.
-    """
     changed = Signal(str)
 
     def __init__(self):
@@ -1577,7 +1573,6 @@ class HotkeyEdit(QLineEdit):
         self.setMinimumHeight(46)
         self._refresh_placeholder()
 
-    # ---------- внешний API ----------
     def set_value(self, hk: str):
         self.setText(hk or "")
         self._refresh_placeholder()
@@ -1585,7 +1580,6 @@ class HotkeyEdit(QLineEdit):
     def value(self) -> str:
         return self.text().strip()
 
-    # ---------- внутреннее ----------
     def _refresh_placeholder(self):
         if self._recording:
             self.setPlaceholderText("● Нажмите комбинацию…")
@@ -1617,16 +1611,10 @@ class HotkeyEdit(QLineEdit):
         self._set_recording_prop(False)
         self._refresh_placeholder()
 
-    # ---------- события ----------
     def mousePressEvent(self, e):
         if e.button() == Qt.LeftButton:
             self._start_recording()
         super().mousePressEvent(e)
-
-    def focusInEvent(self, e):
-        super().focusInEvent(e)
-        # клик по полю = вход в запись, даже если это программный focus
-        # (оставляем на mousePressEvent, чтобы не начинать запись при tab-переходе)
 
     def focusOutEvent(self, e):
         if self._recording:
@@ -1640,17 +1628,14 @@ class HotkeyEdit(QLineEdit):
         key = e.key()
         mods = e.modifiers()
 
-        # Esc — отмена
         if key == Qt.Key_Escape:
             self._stop_recording(cancel=True)
             return
 
-        # только модификаторы — живой превью
         if key in (Qt.Key_Control, Qt.Key_Shift, Qt.Key_Alt, Qt.Key_Meta):
             self._show_modifier_preview(mods)
             return
 
-        # основная клавиша — фиксируем
         parts = []
         if mods & Qt.ControlModifier:
             parts.append("<ctrl>")
@@ -1745,7 +1730,6 @@ class SettingsWindow(QWidget):
 
         self._drag_pos = None
 
-        # ─── Скролл + контент ───
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
@@ -1764,7 +1748,7 @@ class SettingsWindow(QWidget):
         root.setContentsMargins(24, 16, 24, 20)
         root.setSpacing(12)
 
-        # ─── Title bar ───
+        # Titlebar
         titlebar = QFrame()
         titlebar.setObjectName("TitleBar")
         titlebar.setFixedHeight(44)
@@ -1797,7 +1781,7 @@ class SettingsWindow(QWidget):
 
         root.addWidget(titlebar)
 
-        # ─── Hero card ───
+        # Hero
         hero = QFrame()
         hero.setObjectName("HeroCard")
         hl = QHBoxLayout(hero)
@@ -1831,7 +1815,7 @@ class SettingsWindow(QWidget):
 
         root.addWidget(hero)
 
-        # ─── Карточка: горячие клавиши ───
+        # Hotkeys card
         card1 = QFrame()
         card1.setObjectName("Card")
         c1 = QVBoxLayout(card1)
@@ -1880,7 +1864,7 @@ class SettingsWindow(QWidget):
 
         root.addWidget(card1)
 
-        # ─── Карточка: папка сохранения ───
+        # Folder card
         card2 = QFrame()
         card2.setObjectName("Card")
         c2 = QVBoxLayout(card2)
@@ -1897,9 +1881,6 @@ class SettingsWindow(QWidget):
         self.dir_edit = QLineEdit()
         self.dir_edit.setPlaceholderText(default_save_dir())
         self.dir_edit.setText(self.cfg.get("save_dir", ""))
-        self.dir_edit.setToolTip(
-            "Оставьте пустым, чтобы сохранять в системную «Изображения»"
-        )
         self.dir_edit.setMinimumHeight(44)
         row.addWidget(self.dir_edit, 1)
 
@@ -1940,7 +1921,7 @@ class SettingsWindow(QWidget):
 
         root.addWidget(card2)
 
-        # ─── Карточка: управление в оверлее ───
+        # Overlay hints
         card3 = QFrame()
         card3.setObjectName("Card")
         c3 = QVBoxLayout(card3)
@@ -1995,7 +1976,7 @@ class SettingsWindow(QWidget):
 
         root.addStretch()
 
-        # ─── Кнопки ───
+        # Buttons
         btns = QHBoxLayout()
         btns.setSpacing(10)
 
@@ -2030,12 +2011,10 @@ class SettingsWindow(QWidget):
         scroll.setWidget(content)
         outer.addWidget(scroll)
 
-    # ─── Геометрия фона ───
     def resizeEvent(self, e):
         super().resizeEvent(e)
         self.bg.setGeometry(self.rect())
 
-    # ─── Перетаскивание ───
     def mousePressEvent(self, e):
         if e.button() == Qt.LeftButton and e.position().y() < 64:
             self._drag_pos = (e.globalPosition().toPoint()
@@ -2050,7 +2029,6 @@ class SettingsWindow(QWidget):
     def mouseReleaseEvent(self, e):
         self._drag_pos = None
 
-    # ─── Обработчики ───
     def _reset_one(self, key):
         if key in self.hotkey_edits:
             self.hotkey_edits[key].set_value(DEFAULT_HOTKEYS[key])
@@ -2101,14 +2079,12 @@ class SettingsWindow(QWidget):
 
     def keyPressEvent(self, e):
         if e.key() == Qt.Key_Escape:
-            # если идёт запись в поле — оно само обработает
             focused = self.focusWidget()
             if isinstance(focused, HotkeyEdit):
                 return
             self.close()
 
     def _save(self):
-        # 1) собираем значения
         values = {}
         for key in HOTKEY_ORDER:
             edit = self.hotkey_edits[key]
@@ -2116,8 +2092,7 @@ class SettingsWindow(QWidget):
             if not v:
                 QMessageBox.warning(
                     self, "Ошибка",
-                    f"Не задана комбинация для «{HOTKEY_LABELS[key]}».\n"
-                    "Кликните по полю и нажмите нужные клавиши."
+                    f"Не задана комбинация для «{HOTKEY_LABELS[key]}»."
                 )
                 return
             try:
@@ -2130,7 +2105,6 @@ class SettingsWindow(QWidget):
                 return
             values[key] = v
 
-        # 2) конфликты
         used = {}
         for key, v in values.items():
             if v in used:
@@ -2139,13 +2113,11 @@ class SettingsWindow(QWidget):
                     f"Комбинация «{pretty_hotkey(v)}» назначена "
                     f"на два действия:\n"
                     f"  • {HOTKEY_LABELS[used[v]]}\n"
-                    f"  • {HOTKEY_LABELS[key]}\n\n"
-                    f"Поменяйте одну из них."
+                    f"  • {HOTKEY_LABELS[key]}"
                 )
                 return
             used[v] = key
 
-        # 3) папка
         d = self.dir_edit.text().strip()
         if d and not Path(d).is_dir():
             r = QMessageBox.question(
@@ -2165,7 +2137,6 @@ class SettingsWindow(QWidget):
             else:
                 return
 
-        # 4) сохраняем
         self.cfg["hotkeys"] = values
         self.cfg["save_dir"] = d
         config_save(self.cfg)
@@ -2206,10 +2177,8 @@ class App(QObject):
         self.app.setWindowIcon(app_icon())
         self.app.setStyle("Fusion")
 
-        # ─── Прогреваем dxcam заранее (первый вызов медленный) ───
         QTimer.singleShot(100, _get_dxcam)
 
-        # ─── Уже запущен? ───
         if _is_already_running():
             QMessageBox.information(
                 None,
@@ -2223,7 +2192,7 @@ class App(QObject):
         self.server = QLocalServer()
         self.server.newConnection.connect(self._on_new_connection)
         if not self.server.listen(SINGLE_INSTANCE_KEY):
-            print("Warning: не удалось открыть single-instance server")
+            print("Warning: single-instance server failed")
 
         self.tray = QSystemTrayIcon(app_icon())
         self.tray.setToolTip(f"{APP_NAME} · by {APP_AUTHOR}")
@@ -2377,7 +2346,7 @@ class App(QObject):
         self.overlay.show()
         self.overlay.raise_()
         self.overlay.activateWindow()
-        self.overlay.setFocus()
+        self.overlay.setFocus(Qt.ActiveWindowFocusReason)
 
     @Slot()
     def _fullscreen_copy(self):

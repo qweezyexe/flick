@@ -3,6 +3,7 @@ from PyInstaller.utils.hooks import collect_submodules
 
 hiddenimports = ['pynput.keyboard._win32', 'pynput.mouse._win32']
 hiddenimports += collect_submodules('pynput')
+hiddenimports += collect_submodules('dxcam')
 
 
 a = Analysis(
