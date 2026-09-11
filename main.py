@@ -1,0 +1,1796 @@
+"""
+Flick — скриншоты и аннотации
+by qweezy.exe
+"""
+
+import sys
+import math
+import json
+from dataclasses import dataclass, field
+from typing import List
+from pathlib import Path
+from datetime import datetime
+
+from PySide6.QtWidgets import (
+    QApplication, QSystemTrayIcon, QMenu, QWidget, QVBoxLayout,
+    QHBoxLayout, QGridLayout, QLabel, QFrame, QLineEdit, QPushButton,
+    QMessageBox, QColorDialog, QSlider, QFileDialog,
+    QGraphicsOpacityEffect,
+)
+from PySide6.QtGui import (
+    QIcon, QAction, QFont, QFontMetrics, QPainter, QPen, QColor,
+    QPixmap, QImage, QGuiApplication, QPainterPath,
+    QLinearGradient, QRadialGradient, QBrush, QDesktopServices,
+)
+from PySide6.QtCore import (
+    Qt, QObject, Signal, Slot, QRect, QPoint, QPointF, QSize,
+    QStandardPaths, QPropertyAnimation, QEasingCurve, QRectF, QUrl,
+)
+from PySide6.QtNetwork import QLocalServer, QLocalSocket
+
+import mss
+from pynput import keyboard
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  КОНФИГ
+# ═══════════════════════════════════════════════════════════════════
+
+CONFIG_PATH = Path.home() / ".config" / "flick" / "config.json"
+
+DEFAULTS = {
+    "hotkey": "<f7>",
+    "color": "#a855f7",
+    "thickness": 3,
+    "number_size": 18,
+    "save_dir": "",
+}
+
+
+def config_load():
+    if CONFIG_PATH.exists():
+        try:
+            data = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+            return {**DEFAULTS, **data}
+        except Exception:
+            pass
+    return dict(DEFAULTS)
+
+
+def config_save(cfg):
+    CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    CONFIG_PATH.write_text(
+        json.dumps(cfg, indent=2, ensure_ascii=False), encoding="utf-8"
+    )
+
+
+def default_save_dir() -> str:
+    loc = QStandardPaths.writableLocation(
+        QStandardPaths.PicturesLocation)
+    return loc or str(Path.home())
+
+
+def resolve_save_dir(cfg) -> str:
+    d = (cfg.get("save_dir") or "").strip()
+    if d and Path(d).is_dir():
+        return d
+    return default_save_dir()
+
+
+def pretty_hotkey(hk: str) -> str:
+    parts = []
+    for p in hk.split("+"):
+        p = p.strip()
+        if not p:
+            continue
+        name = p.strip("<>").upper()
+        if name == "CTRL":
+            name = "Ctrl"
+        elif name == "SHIFT":
+            name = "Shift"
+        elif name == "ALT":
+            name = "Alt"
+        elif name == "CMD":
+            name = "⌘"
+        elif name == "PRINT_SCREEN":
+            name = "PrtSc"
+        elif name == "PAGE_UP":
+            name = "PgUp"
+        elif name == "PAGE_DOWN":
+            name = "PgDn"
+        parts.append(name)
+    return " + ".join(parts)
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  ТЕМА / БРЕНДИНГ
+# ═══════════════════════════════════════════════════════════════════
+
+APP_NAME = "Flick"
+APP_TAGLINE = "Скриншоты и аннотации"
+APP_VERSION = "1.0.0"
+APP_AUTHOR = "qweezy.exe"
+APP_AUTHOR_URL = ""
+
+SINGLE_INSTANCE_KEY = "Flick-SingleInstance-qweezy-2026"
+
+ACCENT = "#a855f7"
+ACCENT_HOVER = "#c084fc"
+ACCENT_PRESSED = "#7c3aed"
+ACCENT_SOFT = "#2a1f3d"
+
+BG_DEEP = "#0f0b16"
+BG = "#16111f"
+SURFACE = "#241d32"
+SURFACE_2 = "#2d2438"
+BORDER = "#3d3450"
+BORDER_2 = "#4a3f5f"
+TEXT = "#ece7f5"
+TEXT_MUTED = "#9d95b0"
+
+
+TOOLBAR_QSS = f"""
+QFrame#Toolbar {{
+    background: {SURFACE};
+    border: 1px solid {BORDER};
+    border-radius: 12px;
+}}
+QPushButton {{
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    padding: 0;
+}}
+QPushButton:hover {{
+    background: {SURFACE_2};
+    border: 1px solid {BORDER};
+}}
+QPushButton:checked {{
+    background: {ACCENT};
+    border: 1px solid {ACCENT_HOVER};
+}}
+QPushButton:pressed {{
+    background: {ACCENT_PRESSED};
+}}
+QPushButton#Primary {{
+    background: {ACCENT};
+    color: white;
+    padding: 6px 14px;
+    font-weight: bold;
+    border-radius: 8px;
+}}
+QPushButton#Primary:hover {{ background: {ACCENT_HOVER}; }}
+QPushButton#Primary:pressed {{ background: {ACCENT_PRESSED}; }}
+QLabel {{ color: {TEXT_MUTED}; }}
+QSlider::groove:horizontal {{
+    height: 4px; background: {BORDER}; border-radius: 2px;
+}}
+QSlider::sub-page:horizontal {{
+    background: {ACCENT}; border-radius: 2px;
+}}
+QSlider::handle:horizontal {{
+    width: 14px; background: {ACCENT_HOVER}; border-radius: 7px;
+    margin: -6px 0;
+}}
+QSlider::handle:horizontal:hover {{ background: #d8b4fe; }}
+QFrame#Sep {{ color: {BORDER}; background: {BORDER}; max-width: 1px; }}
+"""
+
+
+SETTINGS_QSS = f"""
+QWidget#Root {{
+    background: {BG};
+    color: {TEXT};
+    font-family: "Segoe UI", "SF Pro Display", Inter, sans-serif;
+}}
+QLabel#SectionLabel {{
+    color: {TEXT};
+    font-size: 13px;
+    font-weight: 600;
+    background: transparent;
+}}
+QLabel#Hint {{
+    color: {TEXT_MUTED};
+    font-size: 11px;
+    background: transparent;
+}}
+QLabel#CurrentKey {{
+    color: {ACCENT_HOVER};
+    font-size: 13px;
+    font-weight: 600;
+    background: transparent;
+}}
+QLabel#Version {{
+    color: {TEXT_MUTED};
+    font-size: 11px;
+    background: transparent;
+}}
+QLabel#HeaderAuthor {{
+    color: rgba(255,255,255,0.75);
+    font-size: 11px;
+    background: transparent;
+}}
+QFrame#Card {{
+    background: {SURFACE};
+    border: 1px solid {BORDER};
+    border-radius: 12px;
+}}
+QFrame#HeaderCard {{
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+        stop:0 {ACCENT}, stop:1 {ACCENT_PRESSED});
+    border-radius: 14px;
+    border: none;
+}}
+QLabel#HeaderTitle {{
+    color: white;
+    font-size: 18px;
+    font-weight: 700;
+    background: transparent;
+}}
+QLabel#HeaderSub {{
+    color: rgba(255,255,255,0.85);
+    font-size: 12px;
+    background: transparent;
+}}
+QLineEdit {{
+    background: {BG_DEEP};
+    border: 1px solid {BORDER};
+    border-radius: 8px;
+    padding: 10px 14px;
+    color: {TEXT};
+    font-size: 13px;
+    selection-background-color: {ACCENT};
+}}
+QLineEdit:hover {{ border: 1px solid {BORDER_2}; }}
+QLineEdit:focus {{ border: 1px solid {ACCENT}; }}
+QPushButton {{
+    background: {SURFACE_2};
+    border: 1px solid {BORDER};
+    border-radius: 8px;
+    padding: 10px 18px;
+    color: {TEXT};
+    font-weight: 600;
+    font-size: 13px;
+}}
+QPushButton:hover {{
+    background: {BORDER};
+    border: 1px solid {BORDER_2};
+}}
+QPushButton:pressed {{ background: {ACCENT_SOFT}; }}
+QPushButton#Primary {{
+    background: {ACCENT};
+    border: 1px solid {ACCENT};
+    color: white;
+}}
+QPushButton#Primary:hover {{
+    background: {ACCENT_HOVER};
+    border: 1px solid {ACCENT_HOVER};
+}}
+QPushButton#Primary:pressed {{ background: {ACCENT_PRESSED}; }}
+QPushButton#Browse {{
+    background: {SURFACE_2};
+    border: 1px solid {BORDER};
+    padding: 10px 16px;
+    min-width: 40px;
+    font-weight: 700;
+}}
+QPushButton#Browse:hover {{
+    background: {ACCENT_SOFT};
+    border: 1px solid {ACCENT};
+    color: {ACCENT_HOVER};
+}}
+"""
+
+
+TRAY_MENU_QSS = f"""
+QMenu {{
+    background: {SURFACE};
+    color: {TEXT};
+    border: 1px solid {BORDER};
+    border-radius: 10px;
+    padding: 6px;
+}}
+QMenu::item {{
+    padding: 8px 22px 8px 14px;
+    border-radius: 6px;
+}}
+QMenu::item:selected {{
+    background: {ACCENT};
+    color: white;
+}}
+QMenu::separator {{
+    height: 1px; background: {BORDER}; margin: 4px 8px;
+}}
+"""
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  ИКОНКИ
+# ═══════════════════════════════════════════════════════════════════
+
+def _draw_icon(p: QPainter, kind: str, color: QColor):
+    stroke = 2.0
+    p.setPen(QPen(color, stroke, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
+    p.setBrush(Qt.NoBrush)
+
+    if kind == "select":
+        path = QPainterPath()
+        path.moveTo(5, 3)
+        path.lineTo(5, 19.5)
+        path.lineTo(9.3, 14.8)
+        path.lineTo(12.8, 21)
+        path.lineTo(15.7, 19.6)
+        path.lineTo(12.2, 13.4)
+        path.lineTo(18.5, 13.4)
+        path.closeSubpath()
+        p.setPen(Qt.NoPen)
+        p.setBrush(color)
+        p.drawPath(path)
+
+    elif kind == "pen":
+        body = QPainterPath()
+        body.moveTo(3.5, 20.5)
+        body.lineTo(4.5, 15.5)
+        body.lineTo(15.5, 4.5)
+        body.lineTo(19.5, 8.5)
+        body.lineTo(8.5, 19.5)
+        body.closeSubpath()
+        p.drawPath(body)
+        p.drawLine(QPointF(13.5, 6.5), QPointF(17.5, 10.5))
+
+    elif kind == "marker":
+        p.setPen(QPen(color, 4.2, Qt.SolidLine, Qt.RoundCap))
+        p.drawLine(QPointF(6.5, 17.5), QPointF(17.5, 6.5))
+
+    elif kind == "highlighter":
+        p.setPen(QPen(color, 6.5, Qt.SolidLine, Qt.FlatCap))
+        p.drawLine(QPointF(5, 17), QPointF(19, 7))
+
+    elif kind == "neon":
+        path = QPainterPath()
+        path.moveTo(12, 3)
+        path.quadTo(12.5, 11.5, 21, 12)
+        path.quadTo(12.5, 12.5, 12, 21)
+        path.quadTo(11.5, 12.5, 3, 12)
+        path.quadTo(11.5, 11.5, 12, 3)
+        path.closeSubpath()
+        p.setPen(Qt.NoPen)
+        p.setBrush(color)
+        p.drawPath(path)
+
+    elif kind == "rect":
+        p.drawRoundedRect(QRectF(4, 5, 16, 14), 2.5, 2.5)
+
+    elif kind == "arrow":
+        p.drawLine(QPointF(5, 19), QPointF(19, 5))
+        head = QPainterPath()
+        head.moveTo(19, 5)
+        head.lineTo(11.5, 5.5)
+        head.lineTo(18.5, 12.5)
+        head.closeSubpath()
+        p.setPen(Qt.NoPen)
+        p.setBrush(color)
+        p.drawPath(head)
+
+    elif kind == "text":
+        p.setPen(QPen(color, 2.4, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
+        p.drawLine(QPointF(5, 6.5), QPointF(19, 6.5))
+        p.drawLine(QPointF(12, 6.5), QPointF(12, 19))
+
+    elif kind == "number":
+        p.setPen(QPen(color, 1.9, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
+        p.setBrush(Qt.NoBrush)
+        p.drawEllipse(QPointF(12, 12), 8.5, 8.5)
+        p.drawLine(QPointF(10, 10), QPointF(12.2, 8))
+        p.drawLine(QPointF(12.2, 8), QPointF(12.2, 16))
+        p.drawLine(QPointF(9, 16), QPointF(15.5, 16))
+
+    elif kind == "copy":
+        p.drawRoundedRect(QRectF(4, 4, 12, 12), 1.8, 1.8)
+        p.drawRoundedRect(QRectF(8.5, 8.5, 12, 12), 1.8, 1.8)
+
+    elif kind == "save":
+        path = QPainterPath()
+        path.moveTo(5, 4)
+        path.lineTo(16, 4)
+        path.lineTo(20, 8)
+        path.lineTo(20, 20)
+        path.lineTo(4, 20)
+        path.lineTo(4, 5)
+        path.closeSubpath()
+        p.drawPath(path)
+        p.drawRect(QRectF(7.5, 13, 9, 7))
+        p.drawRect(QRectF(8.5, 4, 7, 5))
+
+    elif kind == "folder":
+        path = QPainterPath()
+        path.moveTo(3, 6)
+        path.lineTo(10, 6)
+        path.lineTo(12, 9)
+        path.lineTo(21, 9)
+        path.lineTo(21, 19)
+        path.lineTo(3, 19)
+        path.closeSubpath()
+        p.drawPath(path)
+
+    elif kind == "settings":
+        p.drawEllipse(QPointF(12, 12), 3.2, 3.2)
+        p.setPen(QPen(color, 2.2, Qt.SolidLine, Qt.RoundCap))
+        for i in range(8):
+            a = i * math.pi / 4
+            x1 = 12 + math.cos(a) * 6
+            y1 = 12 + math.sin(a) * 6
+            x2 = 12 + math.cos(a) * 8.8
+            y2 = 12 + math.sin(a) * 8.8
+            p.drawLine(QPointF(x1, y1), QPointF(x2, y2))
+
+
+def _logo_pixmap(size: int) -> QPixmap:
+    dpr = 2
+    px = int(size * dpr)
+    pm = QPixmap(px, px)
+    pm.setDevicePixelRatio(dpr)
+    pm.fill(Qt.transparent)
+    p = QPainter(pm)
+    p.setRenderHint(QPainter.Antialiasing)
+    p.setRenderHint(QPainter.TextAntialiasing)
+
+    s = float(size)
+    cx = cy = s / 2.0
+    r = s / 2.0 - s * 0.03
+
+    grad = QLinearGradient(0, 0, s, s)
+    grad.setColorAt(0.0, QColor("#c084fc"))
+    grad.setColorAt(0.45, QColor("#a855f7"))
+    grad.setColorAt(1.0, QColor("#6d28d9"))
+    p.setPen(Qt.NoPen)
+    p.setBrush(QBrush(grad))
+    p.drawEllipse(QPointF(cx, cy), r, r)
+
+    gloss = QRadialGradient(QPointF(cx, cy - r * 0.45),
+                            r * 1.25,
+                            QPointF(cx, cy - r * 0.45))
+    gloss.setColorAt(0.0, QColor(255, 255, 255, 90))
+    gloss.setColorAt(0.55, QColor(255, 255, 255, 0))
+    gloss.setColorAt(1.0, QColor(255, 255, 255, 0))
+    p.setBrush(QBrush(gloss))
+    p.drawEllipse(QPointF(cx, cy), r, r)
+
+    p.setBrush(Qt.NoBrush)
+    p.setPen(QPen(QColor(255, 255, 255, 55), max(1.0, s * 0.02)))
+    p.drawEllipse(QPointF(cx, cy), r - s * 0.015, r - s * 0.015)
+
+    f = QFont()
+    f.setBold(True)
+    f.setPixelSize(int(size * 0.62))
+    f.setFamily("Segoe UI")
+    f.setStyleHint(QFont.SansSerif)
+    p.setFont(f)
+    p.setPen(QColor("#ffffff"))
+    p.drawText(QRectF(0, 0, s, s), Qt.AlignCenter, "F")
+
+    spark_cx = s * 0.78
+    spark_cy = s * 0.22
+    spark_r = s * 0.12
+    spark_path = QPainterPath()
+    spark_path.moveTo(spark_cx, spark_cy - spark_r)
+    spark_path.quadTo(spark_cx + spark_r * 0.18, spark_cy - spark_r * 0.18,
+                      spark_cx + spark_r, spark_cy)
+    spark_path.quadTo(spark_cx + spark_r * 0.18, spark_cy + spark_r * 0.18,
+                      spark_cx, spark_cy + spark_r)
+    spark_path.quadTo(spark_cx - spark_r * 0.18, spark_cy + spark_r * 0.18,
+                      spark_cx - spark_r, spark_cy)
+    spark_path.quadTo(spark_cx - spark_r * 0.18, spark_cy - spark_r * 0.18,
+                      spark_cx, spark_cy - spark_r)
+    spark_path.closeSubpath()
+
+    spark_glow = QRadialGradient(QPointF(spark_cx, spark_cy),
+                                 spark_r * 2.2,
+                                 QPointF(spark_cx, spark_cy))
+    spark_glow.setColorAt(0.0, QColor(255, 255, 255, 130))
+    spark_glow.setColorAt(1.0, QColor(255, 255, 255, 0))
+    p.setPen(Qt.NoPen)
+    p.setBrush(QBrush(spark_glow))
+    p.drawEllipse(QPointF(spark_cx, spark_cy),
+                  spark_r * 2.2, spark_r * 2.2)
+
+    p.setBrush(QColor("#ffffff"))
+    p.drawPath(spark_path)
+
+    p.end()
+    return pm
+
+
+def make_icon(kind: str, color: str = TEXT, size: int = 22) -> QIcon:
+    if kind == "logo":
+        return QIcon(_logo_pixmap(size))
+    dpr = 2
+    px = int(size * dpr)
+    pm = QPixmap(px, px)
+    pm.setDevicePixelRatio(dpr)
+    pm.fill(Qt.transparent)
+    p = QPainter(pm)
+    p.setRenderHint(QPainter.Antialiasing)
+    p.scale(size / 24.0, size / 24.0)
+    _draw_icon(p, kind, QColor(color))
+    p.end()
+    return QIcon(pm)
+
+
+def app_icon() -> QIcon:
+    return make_icon("logo", ACCENT, 32)
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  OVERLAY
+# ═══════════════════════════════════════════════════════════════════
+
+PEN_KINDS = {"pen", "marker", "highlighter", "neon"}
+
+BRUSHES = {
+    "pen":         {"alpha": 255, "scale": 1.0},
+    "marker":      {"alpha": 150, "scale": 2.5},
+    "highlighter": {"alpha": 70,  "scale": 5.0},
+    "neon":        {"alpha": 255, "scale": 1.2, "glow": True},
+}
+
+NUMBER_SIZE_MIN = 8
+NUMBER_SIZE_MAX = 72
+NUMBER_SIZE_STEP = 2
+
+NUMBER_VALUE_MIN = 1
+NUMBER_VALUE_MAX = 999
+
+
+@dataclass
+class Item:
+    kind: str
+    color: str
+    width: int
+    points: list = field(default_factory=list)
+    text: str = ""
+    font_size: int = 18
+
+
+def _fade_in(widget, duration: int = 200):
+    eff = QGraphicsOpacityEffect(widget)
+    widget.setGraphicsEffect(eff)
+    anim = QPropertyAnimation(eff, b"opacity", widget)
+    anim.setDuration(duration)
+    anim.setStartValue(0.0)
+    anim.setEndValue(1.0)
+    anim.setEasingCurve(QEasingCurve.OutCubic)
+    anim.start(QPropertyAnimation.DeleteWhenStopped)
+    widget._fade_anim = anim
+
+
+class Overlay(QWidget):
+    closed = Signal()
+
+    def __init__(self, cfg):
+        super().__init__()
+        self.cfg = cfg
+        self.current_color = cfg.get("color", ACCENT)
+        self.current_width = cfg.get("thickness", 3)
+        self.tool = "select"
+        self.number_counter = 1
+        self.number_size = cfg.get("number_size", 18)
+
+        self.setWindowFlags(
+            Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool
+        )
+        self.setAttribute(Qt.WA_TranslucentBackground)
+        self.setFocusPolicy(Qt.StrongFocus)
+        self.setCursor(Qt.CrossCursor)
+        self.setMouseTracking(True)
+
+        with mss.mss() as sct:
+            mon = sct.monitors[0]
+            shot = sct.grab(mon)
+            img = QImage(
+                shot.raw, shot.width, shot.height,
+                shot.width * 4, QImage.Format_RGB32,
+            ).copy()
+            self.bg = QPixmap.fromImage(img)
+
+        geo = QRect()
+        for s in QGuiApplication.screens():
+            geo = geo.united(s.geometry())
+        self.setGeometry(geo)
+
+        self.sel_start = None
+        self.sel_end = None
+        self.items: List[Item] = []
+        self.active_item = None
+        self.text_edit = None
+        self.text_pos = QPoint(0, 0)
+        self.toolbar = None
+        self.tool_buttons = {}
+        self.color_buttons = []
+        self.number_btn = None
+
+        self.hovered_item: Item = None
+        self.drag_item: Item = None
+        self.drag_offset = QPoint(0, 0)
+        self.drag_moved = False
+
+    def paintEvent(self, e):
+        p = QPainter(self)
+        p.drawPixmap(0, 0, self.bg)
+        sel = self._selection()
+
+        if sel:
+            p.setPen(Qt.NoPen)
+            p.setBrush(QColor(0, 0, 0, 140))
+            for r in self._outside_rects(self.rect(), sel):
+                p.drawRect(r)
+            p.drawPixmap(sel, self.bg, sel)
+
+            p.setPen(QPen(QColor(ACCENT), 1.5))
+            p.setBrush(Qt.NoBrush)
+            p.drawRect(sel)
+
+            p.setPen(Qt.NoPen)
+            p.setBrush(QColor(ACCENT))
+            hs = 5
+            for pt in (sel.topLeft(), sel.topRight(),
+                       sel.bottomLeft(), sel.bottomRight()):
+                p.drawEllipse(pt, hs, hs)
+        else:
+            p.fillRect(self.rect(), QColor(0, 0, 0, 120))
+
+        for it in self.items:
+            self._draw_item(p, it)
+
+        highlight = self.drag_item or self.hovered_item
+        if highlight is not None:
+            if highlight.kind == "number":
+                r = highlight.font_size + 4 + 4
+                p.setPen(QPen(QColor("#ffffff"), 1.5, Qt.DashLine))
+                p.setBrush(Qt.NoBrush)
+                p.drawEllipse(highlight.points[0], r, r)
+            elif highlight.kind == "text":
+                r = self._text_rect(highlight).adjusted(-3, -3, 3, 3)
+                p.setPen(QPen(QColor("#ffffff"), 1.5, Qt.DashLine))
+                p.setBrush(Qt.NoBrush)
+                p.drawRect(r)
+
+        if self.active_item:
+            self._draw_item(p, self.active_item)
+
+    def _draw_item(self, p, it: Item):
+        if it.kind in PEN_KINDS:
+            self._draw_stroke(p, it)
+        elif it.kind == "rect" and len(it.points) >= 2:
+            p.setPen(QPen(QColor(it.color), it.width, Qt.SolidLine,
+                          Qt.RoundCap, Qt.RoundJoin))
+            p.setBrush(Qt.NoBrush)
+            p.drawRect(QRect(it.points[0], it.points[-1]).normalized())
+        elif it.kind == "arrow" and len(it.points) >= 2:
+            p.setPen(QPen(QColor(it.color), it.width, Qt.SolidLine,
+                          Qt.RoundCap, Qt.RoundJoin))
+            self._draw_arrow(p, it.points[0], it.points[-1], it.width)
+        elif it.kind == "text":
+            f = QFont()
+            f.setPointSize(it.font_size)
+            f.setBold(True)
+            p.setFont(f)
+            p.setPen(QColor(it.color))
+            fm = p.fontMetrics()
+            rect = QRect(it.points[0],
+                         QSize(fm.horizontalAdvance(it.text), fm.height()))
+            p.drawText(rect, Qt.AlignLeft | Qt.AlignTop, it.text)
+        elif it.kind == "number":
+            self._draw_number(p, it)
+
+    def _draw_number(self, p, it: Item):
+        radius = it.font_size + 4
+        center = it.points[0]
+        p.setPen(Qt.NoPen)
+        p.setBrush(QColor(it.color))
+        p.drawEllipse(center, radius, radius)
+        f = QFont()
+        f.setPointSize(it.font_size)
+        f.setBold(True)
+        p.setFont(f)
+        p.setPen(QColor("#ffffff"))
+        r = QRect(center.x() - radius, center.y() - radius,
+                  radius * 2, radius * 2)
+        p.drawText(r, Qt.AlignCenter, it.text)
+
+    def _draw_stroke(self, p, it: Item):
+        cfg = BRUSHES.get(it.kind, BRUSHES["pen"])
+        if cfg.get("glow"):
+            for mult, alpha in ((3.0, 60), (2.0, 120), (1.0, 255)):
+                c = QColor(it.color)
+                c.setAlpha(alpha)
+                p.setPen(QPen(c,
+                              max(1, int(it.width * cfg["scale"] * mult)),
+                              Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
+                for i in range(1, len(it.points)):
+                    p.drawLine(it.points[i - 1], it.points[i])
+        else:
+            c = QColor(it.color)
+            c.setAlpha(cfg["alpha"])
+            cap = Qt.FlatCap if it.kind == "highlighter" else Qt.RoundCap
+            w = max(1, int(it.width * cfg["scale"]))
+            p.setPen(QPen(c, w, Qt.SolidLine, cap, Qt.RoundJoin))
+            for i in range(1, len(it.points)):
+                p.drawLine(it.points[i - 1], it.points[i])
+
+    def _draw_arrow(self, p, a, b, width):
+        p.drawLine(a, b)
+        angle = math.atan2(b.y() - a.y(), b.x() - a.x())
+        size = max(10, width * 4)
+        for da in (math.radians(150), -math.radians(150)):
+            x = b.x() + size * math.cos(angle + da)
+            y = b.y() + size * math.sin(angle + da)
+            p.drawLine(b, QPoint(int(x), int(y)))
+
+    def _selection(self):
+        if self.sel_start and self.sel_end:
+            return QRect(self.sel_start, self.sel_end).normalized()
+        return None
+
+    def _outside_rects(self, full, sel):
+        return [
+            QRect(full.left(), full.top(),
+                  full.width(), sel.top() - full.top()),
+            QRect(full.left(), sel.bottom() + 1,
+                  full.width(), full.bottom() - sel.bottom()),
+            QRect(full.left(), sel.top(),
+                  sel.left() - full.left(), sel.height()),
+            QRect(sel.right() + 1, sel.top(),
+                  full.right() - sel.right(), sel.height()),
+        ]
+
+    def _text_rect(self, it: Item) -> QRect:
+        f = QFont()
+        f.setPointSize(it.font_size)
+        f.setBold(True)
+        fm = QFontMetrics(f)
+        w = fm.horizontalAdvance(it.text)
+        h = fm.height()
+        return QRect(it.points[0], QSize(w, h))
+
+    def _hit_test_number(self, pos: QPoint):
+        for it in reversed(self.items):
+            if it.kind != "number":
+                continue
+            dx = pos.x() - it.points[0].x()
+            dy = pos.y() - it.points[0].y()
+            r = it.font_size + 4
+            if dx * dx + dy * dy <= r * r:
+                return it
+        return None
+
+    def _hit_test_draggable(self, pos: QPoint):
+        for it in reversed(self.items):
+            if it.kind == "number":
+                dx = pos.x() - it.points[0].x()
+                dy = pos.y() - it.points[0].y()
+                r = it.font_size + 4
+                if dx * dx + dy * dy <= r * r:
+                    return it
+            elif it.kind == "text":
+                rect = self._text_rect(it).adjusted(-3, -3, 3, 3)
+                if rect.contains(pos):
+                    return it
+        return None
+
+    def mousePressEvent(self, e):
+        pos = e.position().toPoint()
+
+        if e.button() == Qt.RightButton:
+            if self.text_edit:
+                self._commit_text()
+                return
+            if self.active_item:
+                self.active_item = None
+                self.update()
+                return
+            self.close()
+            return
+
+        if e.button() != Qt.LeftButton:
+            return
+
+        hit = self._hit_test_draggable(pos)
+        if hit is not None:
+            self.drag_item = hit
+            self.drag_offset = QPoint(
+                pos.x() - hit.points[0].x(),
+                pos.y() - hit.points[0].y(),
+            )
+            self.drag_moved = False
+            self.setCursor(Qt.ClosedHandCursor)
+            return
+
+        sel = self._selection()
+
+        if self.tool == "select" or not sel:
+            if not sel or not sel.contains(pos):
+                self.sel_start = pos
+                self.sel_end = pos
+                if self.toolbar:
+                    self.toolbar.hide()
+                    self.toolbar.deleteLater()
+                    self.toolbar = None
+                self.update()
+                return
+
+        if self.tool in PEN_KINDS:
+            self.active_item = Item(self.tool, self.current_color,
+                                    self.current_width, [pos])
+        elif self.tool in ("rect", "arrow"):
+            self.active_item = Item(self.tool, self.current_color,
+                                    self.current_width, [pos, pos])
+        elif self.tool == "text":
+            self._start_text_edit(pos)
+        elif self.tool == "number":
+            item = Item("number", self.current_color, self.current_width,
+                        [pos], text=str(self.number_counter))
+            item.font_size = self.number_size
+            self.items.append(item)
+            self.number_counter += 1
+            self._update_number_tooltip()
+            self.update()
+        self.update()
+
+    def mouseMoveEvent(self, e):
+        pos = e.position().toPoint()
+
+        if self.drag_item is not None:
+            self.drag_item.points[0] = QPoint(
+                pos.x() - self.drag_offset.x(),
+                pos.y() - self.drag_offset.y(),
+            )
+            self.drag_moved = True
+            self.update()
+            return
+
+        if self.active_item:
+            if self.active_item.kind in PEN_KINDS:
+                self.active_item.points.append(pos)
+            elif len(self.active_item.points) >= 2:
+                self.active_item.points[-1] = pos
+            self.update()
+            return
+
+        if self.sel_start and not self.toolbar:
+            self.sel_end = pos
+            self.update()
+            return
+
+        hovered = self._hit_test_draggable(pos) if self.items else None
+        if hovered is not self.hovered_item:
+            self.hovered_item = hovered
+            self._refresh_cursor()
+            self.update()
+
+    def mouseReleaseEvent(self, e):
+        if self.drag_item is not None:
+            self.drag_item = None
+            self._refresh_cursor()
+            self.update()
+            return
+
+        if self.active_item:
+            self.items.append(self.active_item)
+            self.active_item = None
+            self.update()
+        elif self.sel_start and self.sel_end and not self.toolbar:
+            sel = self._selection()
+            if sel.width() > 5 and sel.height() > 5:
+                self._show_toolbar(sel)
+
+    def leaveEvent(self, e):
+        if self.drag_item is not None:
+            return
+        if self.hovered_item is not None:
+            self.hovered_item = None
+            self.update()
+
+    def _refresh_cursor(self):
+        if self.drag_item is not None:
+            self.setCursor(Qt.ClosedHandCursor)
+        elif self.hovered_item is not None:
+            self.setCursor(Qt.OpenHandCursor)
+        elif self.tool == "text":
+            self.setCursor(Qt.IBeamCursor)
+        elif self.tool == "number":
+            self.setCursor(Qt.PointingHandCursor)
+        else:
+            self.setCursor(Qt.CrossCursor)
+
+    def wheelEvent(self, e):
+        delta = e.angleDelta().y()
+        if delta == 0:
+            return
+        direction = 1 if delta > 0 else -1
+        pos = e.position().toPoint()
+
+        hovered = self._hit_test_number(pos)
+        if hovered is not None and hovered.text.isdigit():
+            val = int(hovered.text) + direction
+            val = max(NUMBER_VALUE_MIN, min(NUMBER_VALUE_MAX, val))
+            if str(val) != hovered.text:
+                hovered.text = str(val)
+                self._recompute_counter()
+                self._update_number_tooltip()
+                self.update()
+            e.accept()
+            return
+
+        if self.tool == "number":
+            step = NUMBER_SIZE_STEP * direction
+            new_size = max(NUMBER_SIZE_MIN,
+                           min(NUMBER_SIZE_MAX, self.number_size + step))
+            if new_size != self.number_size:
+                self.number_size = new_size
+                self.cfg["number_size"] = new_size
+                self._update_number_tooltip()
+                self.update()
+            e.accept()
+            return
+
+        new_w = max(1, min(20, self.current_width + direction))
+        if new_w != self.current_width:
+            self._set_width(new_w)
+            if self.toolbar and self.toolbar.isVisible():
+                self.slider.blockSignals(True)
+                self.slider.setValue(new_w)
+                self.slider.blockSignals(False)
+        e.accept()
+
+    def keyPressEvent(self, e):
+        mods = e.modifiers()
+        ctrl = bool(mods & Qt.ControlModifier)
+
+        if e.key() == Qt.Key_Escape:
+            if self.text_edit:
+                edit = self.text_edit
+                self.text_edit = None
+                edit.deleteLater()
+                return
+            self.close()
+        elif e.key() == Qt.Key_C and ctrl:
+            self._copy_to_clipboard()
+        elif e.key() == Qt.Key_S and ctrl:
+            self._save_to_file()
+        elif e.key() in (Qt.Key_Return, Qt.Key_Enter):
+            if not self.text_edit:
+                self._copy_to_clipboard()
+        elif e.key() == Qt.Key_Z and ctrl:
+            if self.items:
+                self.items.pop()
+                self._recompute_counter()
+                self._update_number_tooltip()
+                self.update()
+        elif e.key() == Qt.Key_Delete and self.hovered_item is not None:
+            if self.hovered_item in self.items:
+                self.items.remove(self.hovered_item)
+                self.hovered_item = None
+                self._recompute_counter()
+                self._update_number_tooltip()
+                self.update()
+
+    def _recompute_counter(self):
+        nums = [int(it.text) for it in self.items
+                if it.kind == "number" and it.text.isdigit()]
+        self.number_counter = (max(nums) + 1) if nums else 1
+
+    def _update_number_tooltip(self):
+        if self.number_btn is not None:
+            self.number_btn.setToolTip(
+                f"Цифра — следующий: {self.number_counter}, "
+                f"размер {self.number_size} (крутите колесо)"
+            )
+
+    def _show_toolbar(self, sel):
+        self.toolbar = QFrame(self)
+        self.toolbar.setObjectName("Toolbar")
+        self.toolbar.setStyleSheet(TOOLBAR_QSS)
+
+        lay = QHBoxLayout(self.toolbar)
+        lay.setContentsMargins(10, 7, 10, 7)
+        lay.setSpacing(3)
+
+        tools = [
+            ("select", "Выделение"),
+            ("pen", "Ручка"),
+            ("marker", "Маркер"),
+            ("highlighter", "Текстовыделитель"),
+            ("neon", "Неон"),
+            ("rect", "Прямоугольник"),
+            ("arrow", "Стрелка"),
+            ("text", "Текст"),
+            ("number", "Цифра"),
+        ]
+        self.tool_buttons = {}
+        self.number_btn = None
+        for name, tip in tools:
+            b = QPushButton()
+            b.setIcon(make_icon(name, TEXT, 18))
+            b.setIconSize(QSize(18, 18))
+            b.setCheckable(True)
+            b.setChecked(name == "select")
+            b.setFixedSize(34, 34)
+            b.setToolTip(tip)
+            b.setCursor(Qt.PointingHandCursor)
+            b.clicked.connect(lambda _, n=name: self._set_tool(n))
+            lay.addWidget(b)
+            self.tool_buttons[name] = b
+            if name == "number":
+                self.number_btn = b
+
+        lay.addWidget(self._vsep())
+
+        self.color_buttons = []
+        palette = [ACCENT, "#ec4899", "#ef4444", "#f59e0b",
+                   "#10b981", "#3b82f6", "#ffffff", "#000000"]
+        for c in palette:
+            b = QPushButton()
+            b.setFixedSize(22, 22)
+            b.setStyleSheet(self._swatch_style(c, c == self.current_color))
+            b.setToolTip(c)
+            b.setCursor(Qt.PointingHandCursor)
+            b.clicked.connect(lambda _, col=c: self._set_color(col))
+            lay.addWidget(b)
+            self.color_buttons.append((b, c))
+
+        b_custom = QPushButton("…")
+        b_custom.setStyleSheet(
+            f"color:{TEXT}; background:{SURFACE_2}; "
+            f"border:1px solid {BORDER}; border-radius:11px;"
+        )
+        b_custom.setFixedSize(22, 22)
+        b_custom.setToolTip("Свой цвет…")
+        b_custom.setCursor(Qt.PointingHandCursor)
+        b_custom.clicked.connect(self._pick_color)
+        lay.addWidget(b_custom)
+
+        lay.addWidget(self._vsep())
+
+        self.slider = QSlider(Qt.Horizontal)
+        self.slider.setRange(1, 20)
+        self.slider.setValue(self.current_width)
+        self.slider.setFixedWidth(90)
+        self.slider.setToolTip("Толщина кисти")
+        self.slider.valueChanged.connect(self._set_width)
+        lay.addWidget(self.slider)
+
+        lay.addWidget(self._vsep())
+
+        b_copy = QPushButton()
+        b_copy.setIcon(make_icon("copy", TEXT, 18))
+        b_copy.setIconSize(QSize(18, 18))
+        b_copy.setFixedSize(34, 34)
+        b_copy.setToolTip("Копировать (Ctrl+C / Enter)")
+        b_copy.setCursor(Qt.PointingHandCursor)
+        b_copy.clicked.connect(self._copy_to_clipboard)
+        lay.addWidget(b_copy)
+
+        b_save = QPushButton("Сохранить")
+        b_save.setObjectName("Primary")
+        b_save.setIcon(make_icon("save", "#ffffff", 16))
+        b_save.setIconSize(QSize(16, 16))
+        b_save.setToolTip("Сохранить файл (Ctrl+S)")
+        b_save.setCursor(Qt.PointingHandCursor)
+        b_save.clicked.connect(self._save_to_file)
+        lay.addWidget(b_save)
+
+        self.toolbar.adjustSize()
+        tw, th = self.toolbar.width(), self.toolbar.height()
+        x = max(8, min(sel.left(), self.width() - tw - 8))
+        y = sel.top() - th - 10
+        if y < 8:
+            y = sel.bottom() + 10
+        self.toolbar.move(x, y - 12)
+        self.toolbar.show()
+
+        pos_anim = QPropertyAnimation(self.toolbar, b"pos", self.toolbar)
+        pos_anim.setDuration(220)
+        pos_anim.setStartValue(self.toolbar.pos())
+        pos_anim.setEndValue(QPoint(x, y))
+        pos_anim.setEasingCurve(QEasingCurve.OutCubic)
+        pos_anim.start(QPropertyAnimation.DeleteWhenStopped)
+        self.toolbar._pos_anim = pos_anim
+
+        _fade_in(self.toolbar, 220)
+        self._set_tool("select")
+        self._update_number_tooltip()
+
+    def _vsep(self):
+        sep = QFrame()
+        sep.setObjectName("Sep")
+        sep.setFixedWidth(1)
+        return sep
+
+    def _swatch_style(self, color, active):
+        border = ACCENT if active else BORDER
+        w = 2 if active else 1
+        return (f"background:{color}; border-radius:11px; "
+                f"border:{w}px solid {border};")
+
+    def _set_tool(self, name):
+        self.tool = name
+        for n, b in self.tool_buttons.items():
+            b.setChecked(n == name)
+        self._refresh_cursor()
+
+    def _set_color(self, col):
+        self.current_color = col
+        self.cfg["color"] = col
+        for b, c in self.color_buttons:
+            b.setStyleSheet(self._swatch_style(c, c == col))
+
+    def _pick_color(self):
+        col = QColorDialog.getColor(QColor(self.current_color), self,
+                                    "Выберите цвет")
+        if col.isValid():
+            self._set_color(col.name())
+
+    def _set_width(self, v):
+        self.current_width = v
+        self.cfg["thickness"] = v
+
+    def _start_text_edit(self, pos):
+        if self.text_edit:
+            self._commit_text()
+        self.text_pos = pos
+        self.text_edit = QLineEdit(self)
+        self.text_edit.setStyleSheet(
+            f"background: rgba(15,11,22,200); color:{TEXT}; "
+            f"border: 1px dashed {ACCENT}; border-radius:6px; "
+            f"padding: 4px 8px; font-size: 14px;"
+        )
+        self.text_edit.setMinimumWidth(180)
+        self.text_edit.move(pos)
+        self.text_edit.show()
+        self.text_edit.setFocus()
+        _fade_in(self.text_edit, 150)
+        self.text_edit.returnPressed.connect(self._commit_text)
+        self.text_edit.editingFinished.connect(self._commit_text)
+
+    def _commit_text(self):
+        if not self.text_edit:
+            return
+        edit = self.text_edit
+        self.text_edit = None
+        txt = edit.text().strip()
+        edit.deleteLater()
+        if txt:
+            item = Item("text", self.current_color, self.current_width,
+                        [self.text_pos], text=txt)
+            item.font_size = 12 + self.current_width * 2
+            self.items.append(item)
+            self.update()
+
+    def _compute_crop_rect(self):
+        sel = self._selection()
+        rect = QRect(sel) if sel else QRect()
+        for it in self.items:
+            if it.kind == "text":
+                rect = rect.united(self._text_rect(it))
+            elif it.kind == "number":
+                r = it.font_size + 4
+                rect = rect.united(QRect(
+                    it.points[0].x() - r, it.points[0].y() - r,
+                    r * 2, r * 2,
+                ))
+            else:
+                for pt in it.points:
+                    rect = rect.united(QRect(pt, QSize(1, 1)))
+        if rect.isNull() or rect.width() < 2 or rect.height() < 2:
+            return None
+        return rect.intersected(self.rect())
+
+    def _render_result(self):
+        rect = self._compute_crop_rect()
+        if not rect:
+            return None
+        result = self.bg.copy(rect).toImage()
+        p = QPainter(result)
+        p.setRenderHint(QPainter.Antialiasing)
+        p.translate(-rect.topLeft())
+        for it in self.items:
+            self._draw_item(p, it)
+        p.end()
+        return result
+
+    def _copy_to_clipboard(self):
+        img = self._render_result()
+        if img is None:
+            self.close()
+            return
+        QGuiApplication.clipboard().setImage(img)
+        self.close()
+
+    def _save_to_file(self):
+        img = self._render_result()
+        if img is None:
+            self.close()
+            return
+        out_dir = Path(resolve_save_dir(self.cfg))
+        try:
+            out_dir.mkdir(parents=True, exist_ok=True)
+        except Exception:
+            out_dir = Path(default_save_dir())
+        name = f"flick_{datetime.now():%Y-%m-%d_%H-%M-%S}.png"
+        default_path = str(out_dir / name)
+        self.hide()
+        try:
+            path, _ = QFileDialog.getSaveFileName(
+                self, "Сохранить скриншот", default_path,
+                "PNG (*.png);;JPEG (*.jpg);;Все файлы (*)"
+            )
+        finally:
+            self.show()
+        if not path:
+            return
+        if not img.save(path):
+            QMessageBox.warning(self, "Ошибка",
+                                "Не удалось сохранить файл")
+            return
+        self.close()
+
+    def closeEvent(self, e):
+        self.closed.emit()
+        super().closeEvent(e)
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  НАСТРОЙКИ
+# ═══════════════════════════════════════════════════════════════════
+
+class HotkeyEdit(QLineEdit):
+    changed = Signal(str)
+
+    def __init__(self):
+        super().__init__()
+        self.setReadOnly(True)
+        self.setPlaceholderText("Нажмите комбинацию клавиш…")
+        self.setCursor(Qt.PointingHandCursor)
+        self.setAlignment(Qt.AlignCenter)
+
+    def keyPressEvent(self, e):
+        key = e.key()
+        mods = e.modifiers()
+        if key in (Qt.Key_Control, Qt.Key_Shift, Qt.Key_Alt, Qt.Key_Meta):
+            return
+        parts = []
+        if mods & Qt.ControlModifier:
+            parts.append("<ctrl>")
+        if mods & Qt.ShiftModifier:
+            parts.append("<shift>")
+        if mods & Qt.AltModifier:
+            parts.append("<alt>")
+        if mods & Qt.MetaModifier:
+            parts.append("<cmd>")
+        name = self._map_key(key)
+        if not name:
+            return
+        parts.append(name)
+        text = "+".join(parts)
+        self.setText(text)
+        self.changed.emit(text)
+
+    def _map_key(self, key):
+        if Qt.Key_F1 <= key <= Qt.Key_F35:
+            return f"<f{key - Qt.Key_F1 + 1}>"
+        if Qt.Key_A <= key <= Qt.Key_Z:
+            return chr(key).lower()
+        if Qt.Key_0 <= key <= Qt.Key_9:
+            return chr(key)
+        return {
+            Qt.Key_Print: "<print_screen>",
+            Qt.Key_Insert: "<insert>",
+            Qt.Key_Home: "<home>",
+            Qt.Key_End: "<end>",
+            Qt.Key_PageUp: "<page_up>",
+            Qt.Key_PageDown: "<page_down>",
+            Qt.Key_Space: "<space>",
+            Qt.Key_Tab: "<tab>",
+            Qt.Key_Return: "<enter>",
+            Qt.Key_Escape: "<esc>",
+        }.get(key)
+
+
+class SettingsWindow(QWidget):
+    saved = Signal(dict)
+
+    def __init__(self, cfg):
+        super().__init__()
+        self.setObjectName("Root")
+        self.setWindowTitle(f"{APP_NAME} — Настройки · by {APP_AUTHOR}")
+        self.setMinimumSize(560, 780)
+        self.resize(620, 880)
+        self.setWindowIcon(app_icon())
+        self.setStyleSheet(SETTINGS_QSS)
+        self.cfg = dict(cfg)
+
+        root = QVBoxLayout(self)
+        root.setContentsMargins(24, 24, 24, 24)
+        root.setSpacing(14)
+
+        header = QFrame()
+        header.setObjectName("HeaderCard")
+        hl = QHBoxLayout(header)
+        hl.setContentsMargins(20, 18, 20, 18)
+        hl.setSpacing(14)
+
+        logo_lbl = QLabel()
+        logo_lbl.setPixmap(_logo_pixmap(44))
+        logo_lbl.setFixedSize(44, 44)
+        logo_lbl.setStyleSheet("background: transparent;")
+        hl.addWidget(logo_lbl)
+
+        htxt = QVBoxLayout()
+        htxt.setSpacing(1)
+        t1 = QLabel(APP_NAME)
+        t1.setObjectName("HeaderTitle")
+        htxt.addWidget(t1)
+        t2 = QLabel(APP_TAGLINE)
+        t2.setObjectName("HeaderSub")
+        htxt.addWidget(t2)
+        t3 = QLabel(f"by {APP_AUTHOR}")
+        t3.setObjectName("HeaderAuthor")
+        htxt.addWidget(t3)
+        hl.addLayout(htxt)
+        hl.addStretch()
+
+        root.addWidget(header)
+
+        card1 = QFrame()
+        card1.setObjectName("Card")
+        c1 = QVBoxLayout(card1)
+        c1.setContentsMargins(20, 18, 20, 18)
+        c1.setSpacing(10)
+
+        sec = QLabel("Горячая клавиша")
+        sec.setObjectName("SectionLabel")
+        c1.addWidget(sec)
+
+        self.hotkey_edit = HotkeyEdit()
+        self.hotkey_edit.setText(self.cfg["hotkey"])
+        self.hotkey_edit.changed.connect(self._on_hotkey_changed)
+        self.hotkey_edit.setMinimumHeight(42)
+        c1.addWidget(self.hotkey_edit)
+
+        hint = QLabel(
+            "Кликните по полю и нажмите комбинацию. "
+            "Например: F7, Ctrl+Shift+S, Alt+PrintScreen."
+        )
+        hint.setObjectName("Hint")
+        hint.setWordWrap(True)
+        c1.addWidget(hint)
+
+        self.current_key_lbl = QLabel()
+        self.current_key_lbl.setObjectName("CurrentKey")
+        self._refresh_current_key()
+        c1.addWidget(self.current_key_lbl)
+
+        root.addWidget(card1)
+
+        card2 = QFrame()
+        card2.setObjectName("Card")
+        c2 = QVBoxLayout(card2)
+        c2.setContentsMargins(20, 18, 20, 18)
+        c2.setSpacing(10)
+
+        sec2 = QLabel("Папка для сохранения скриншотов")
+        sec2.setObjectName("SectionLabel")
+        c2.addWidget(sec2)
+
+        row = QHBoxLayout()
+        row.setSpacing(8)
+
+        self.dir_edit = QLineEdit()
+        self.dir_edit.setPlaceholderText(default_save_dir())
+        self.dir_edit.setText(self.cfg.get("save_dir", ""))
+        self.dir_edit.setToolTip(
+            "Оставьте пустым, чтобы сохранять в системную «Изображения»"
+        )
+        self.dir_edit.setMinimumHeight(42)
+        row.addWidget(self.dir_edit, 1)
+
+        b_browse = QPushButton("Обзор…")
+        b_browse.setObjectName("Browse")
+        b_browse.setCursor(Qt.PointingHandCursor)
+        b_browse.setMinimumHeight(42)
+        b_browse.setMinimumWidth(110)
+        b_browse.clicked.connect(self._browse_dir)
+        row.addWidget(b_browse)
+
+        c2.addLayout(row)
+
+        row2 = QHBoxLayout()
+        row2.setSpacing(8)
+
+        b_default = QPushButton("По умолчанию")
+        b_default.setCursor(Qt.PointingHandCursor)
+        b_default.setMinimumHeight(38)
+        b_default.clicked.connect(self._reset_dir)
+        row2.addWidget(b_default)
+
+        b_open = QPushButton("Открыть папку")
+        b_open.setCursor(Qt.PointingHandCursor)
+        b_open.setMinimumHeight(38)
+        b_open.clicked.connect(self._open_dir)
+        row2.addWidget(b_open)
+
+        row2.addStretch()
+        c2.addLayout(row2)
+
+        hint2 = QLabel(
+            f"По умолчанию: {default_save_dir()}\n"
+            "Здесь будут появляться файлы при нажатии «Сохранить» (Ctrl+S)."
+        )
+        hint2.setObjectName("Hint")
+        hint2.setWordWrap(True)
+        c2.addWidget(hint2)
+
+        root.addWidget(card2)
+
+        card3 = QFrame()
+        card3.setObjectName("Card")
+        c3 = QVBoxLayout(card3)
+        c3.setContentsMargins(20, 18, 20, 18)
+        c3.setSpacing(10)
+
+        info_title = QLabel("Управление в оверлее")
+        info_title.setObjectName("SectionLabel")
+        c3.addWidget(info_title)
+
+        grid = QGridLayout()
+        grid.setHorizontalSpacing(20)
+        grid.setVerticalSpacing(8)
+        grid.setColumnStretch(0, 0)
+        grid.setColumnStretch(1, 1)
+
+        items = [
+            ("ЛКМ по цифре/тексту", "перетащить объект"),
+            ("Колесо над цифрой",   "изменить число"),
+            ("Колесо + «Цифра»",    "размер следующей цифры"),
+            ("Колесо (прочее)",     "толщина кисти"),
+            ("Enter / Ctrl+C",      "копировать в буфер"),
+            ("Ctrl+S",              "сохранить в файл"),
+            ("Ctrl+Z",              "отменить последний элемент"),
+            ("Delete",              "удалить объект под курсором"),
+            ("Esc",                 "закрыть"),
+            ("ПКМ",                 "отменить текущий штрих"),
+        ]
+        for i, (key, action) in enumerate(items):
+            k = QLabel(key)
+            k.setStyleSheet(
+                f"color:{ACCENT_HOVER}; font-weight:600; "
+                f"background:transparent;"
+            )
+            k.setMinimumWidth(180)
+            grid.addWidget(k, i, 0, Qt.AlignLeft | Qt.AlignVCenter)
+
+            a = QLabel(action)
+            a.setObjectName("Hint")
+            a.setWordWrap(True)
+            grid.addWidget(a, i, 1, Qt.AlignLeft | Qt.AlignVCenter)
+
+        c3.addLayout(grid)
+        root.addWidget(card3)
+
+        root.addStretch()
+
+        btns = QHBoxLayout()
+        btns.setSpacing(10)
+
+        b_reset = QPushButton("Сброс настроек")
+        b_reset.setCursor(Qt.PointingHandCursor)
+        b_reset.setMinimumHeight(38)
+        b_reset.clicked.connect(self._reset_all)
+        btns.addWidget(b_reset)
+        btns.addStretch()
+
+        b_cancel = QPushButton("Отмена")
+        b_cancel.setCursor(Qt.PointingHandCursor)
+        b_cancel.setMinimumHeight(38)
+        b_cancel.clicked.connect(self.close)
+        btns.addWidget(b_cancel)
+
+        b_save = QPushButton("Сохранить")
+        b_save.setObjectName("Primary")
+        b_save.setCursor(Qt.PointingHandCursor)
+        b_save.setMinimumHeight(38)
+        b_save.clicked.connect(self._save)
+        btns.addWidget(b_save)
+        root.addLayout(btns)
+
+        ver = QLabel(f"v{APP_VERSION} · by {APP_AUTHOR}")
+        ver.setObjectName("Version")
+        ver.setAlignment(Qt.AlignCenter)
+        root.addWidget(ver)
+
+    def _refresh_current_key(self):
+        hk = self.hotkey_edit.text().strip() or self.cfg["hotkey"]
+        self.current_key_lbl.setText(
+            f"Текущая комбинация: {pretty_hotkey(hk)}"
+        )
+
+    def _on_hotkey_changed(self, _):
+        self._refresh_current_key()
+
+    def _browse_dir(self):
+        start = self.dir_edit.text().strip() or default_save_dir()
+        chosen = QFileDialog.getExistingDirectory(
+            self, "Выберите папку для скриншотов", start)
+        if chosen:
+            self.dir_edit.setText(chosen)
+
+    def _reset_dir(self):
+        self.dir_edit.setText("")
+
+    def _open_dir(self):
+        d = self.dir_edit.text().strip() or default_save_dir()
+        if Path(d).exists():
+            QDesktopServices.openUrl(QUrl.fromLocalFile(d))
+        else:
+            QMessageBox.information(
+                self, "Папка не найдена",
+                f"Путь не существует:\n{d}"
+            )
+
+    def _reset_all(self):
+        r = QMessageBox.question(
+            self, "Сброс настроек",
+            "Вернуть все настройки к значениям по умолчанию?",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No,
+        )
+        if r == QMessageBox.Yes:
+            self.hotkey_edit.setText(DEFAULTS["hotkey"])
+            self.dir_edit.setText("")
+            self._refresh_current_key()
+
+    def showEvent(self, e):
+        super().showEvent(e)
+        eff = QGraphicsOpacityEffect(self)
+        self.setGraphicsEffect(eff)
+        anim = QPropertyAnimation(eff, b"opacity", self)
+        anim.setDuration(220)
+        anim.setStartValue(0.0)
+        anim.setEndValue(1.0)
+        anim.setEasingCurve(QEasingCurve.OutCubic)
+        anim.start(QPropertyAnimation.DeleteWhenStopped)
+        self._anim = anim
+
+    def keyPressEvent(self, e):
+        if e.key() == Qt.Key_Escape:
+            self.close()
+
+    def _save(self):
+        hk = self.hotkey_edit.text().strip()
+        if not hk:
+            QMessageBox.warning(self, "Ошибка", "Укажите горячую клавишу")
+            return
+        try:
+            keyboard.HotKey.parse(hk)
+        except Exception as ex:
+            QMessageBox.warning(self, "Ошибка", f"Неверный формат: {ex}")
+            return
+
+        d = self.dir_edit.text().strip()
+        if d and not Path(d).is_dir():
+            r = QMessageBox.question(
+                self, "Папка не существует",
+                f"Папки по пути нет:\n{d}\n\nСоздать её?",
+                QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes,
+            )
+            if r == QMessageBox.Yes:
+                try:
+                    Path(d).mkdir(parents=True, exist_ok=True)
+                except Exception as ex:
+                    QMessageBox.warning(self, "Ошибка",
+                                        f"Не удалось создать папку:\n{ex}")
+                    return
+            else:
+                return
+
+        self.cfg["hotkey"] = hk
+        self.cfg["save_dir"] = d
+        config_save(self.cfg)
+        self.saved.emit(self.cfg)
+        self.close()
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  ПРИЛОЖЕНИЕ
+# ═══════════════════════════════════════════════════════════════════
+
+def _is_already_running() -> bool:
+    """Проверяет, запущен ли уже Flick.
+
+    Пытается подключиться к именованному сокету. Если получилось —
+    отправляет команду 'show' и возвращает True. Первый экземпляр
+    оставляет сервер открытым, второй экземпляр к нему подключается.
+    """
+    sock = QLocalSocket()
+    sock.connectToServer(SINGLE_INSTANCE_KEY)
+    if sock.waitForConnected(300):
+        sock.write(b"show")
+        sock.flush()
+        sock.waitForBytesWritten(200)
+        sock.disconnectFromServer()
+        return True
+    return False
+
+
+class App(QObject):
+    trigger_shot = Signal()
+
+    def __init__(self):
+        super().__init__()
+
+        self.cfg = config_load()
+        self.app = QApplication(sys.argv)
+        self.app.setQuitOnLastWindowClosed(False)
+        self.app.setApplicationName(APP_NAME)
+        self.app.setApplicationVersion(APP_VERSION)
+        self.app.setOrganizationName(APP_AUTHOR)
+        self.app.setWindowIcon(app_icon())
+        self.app.setStyle("Fusion")
+
+        # ─── Проверка на уже запущенный экземпляр ───
+        # Проводим её сразу после QApplication, но до создания трея
+        # и регистрации хоткеев.
+        if _is_already_running():
+            # На Windows QLocalServer не удаляет сокет автоматически,
+            # но здесь мы в «втором» экземпляре — просто выходим.
+            QMessageBox.information(
+                None,
+                APP_NAME,
+                f"{APP_NAME} уже запущен.\n\n"
+                f"Ищи иконку в трее — рядом с часами.\n"
+                f"Горячая клавиша: {pretty_hotkey(self.cfg['hotkey'])}",
+            )
+            sys.exit(0)
+
+        # Становимся «первым» экземпляром — открываем сервер
+        # с тем же именем. На случай, если старый процесс упал
+        # без очистки сокета, сначала снимаем регистрацию.
+        QLocalServer.removeServer(SINGLE_INSTANCE_KEY)
+        self.server = QLocalServer()
+        self.server.newConnection.connect(self._on_new_connection)
+        if not self.server.listen(SINGLE_INSTANCE_KEY):
+            print("Warning: не удалось открыть single-instance server")
+
+        self.tray = QSystemTrayIcon(app_icon())
+        self.tray.setToolTip(f"{APP_NAME} · by {APP_AUTHOR}")
+        self._build_menu()
+        self.tray.show()
+
+        self.hotkeys = None
+        self._start_hotkeys()
+
+        self.trigger_shot.connect(self._take_shot, Qt.QueuedConnection)
+        self.overlay = None
+        self.settings_win = None
+
+    def _on_new_connection(self):
+        """Второй экземпляр постучался — показываем уведомление."""
+        while self.server.hasPendingConnections():
+            conn = self.server.nextPendingConnection()
+            conn.readyRead.connect(
+                lambda c=conn: self._read_from_client(c)
+            )
+            conn.disconnected.connect(conn.deleteLater)
+
+    def _read_from_client(self, conn):
+        try:
+            data = bytes(conn.readAll())
+        except Exception:
+            data = b""
+        if b"show" in data:
+            self.tray.showMessage(
+                APP_NAME,
+                "Программа уже запущена и работает в трее.\n"
+                f"Горячая клавиша: {pretty_hotkey(self.cfg['hotkey'])}",
+                QSystemTrayIcon.Information, 2500,
+            )
+        try:
+            conn.disconnectFromServer()
+        except Exception:
+            pass
+
+    def _build_menu(self):
+        menu = QMenu()
+        menu.setStyleSheet(TRAY_MENU_QSS)
+        hk = pretty_hotkey(self.cfg["hotkey"])
+
+        a_shot = QAction(make_icon("select", TEXT, 14),
+                         f"Сделать скрин ({hk})", menu)
+        a_shot.triggered.connect(self._take_shot)
+        menu.addAction(a_shot)
+
+        menu.addSeparator()
+
+        a_set = QAction(make_icon("settings", TEXT, 14),
+                        "Настройки…", menu)
+        a_set.triggered.connect(self._open_settings)
+        menu.addAction(a_set)
+
+        menu.addSeparator()
+
+        a_about = QAction(f"О {APP_NAME} — by {APP_AUTHOR}", menu)
+        a_about.triggered.connect(self._show_about)
+        menu.addAction(a_about)
+
+        menu.addSeparator()
+
+        a_quit = QAction("Выход", menu)
+        a_quit.triggered.connect(self.app.quit)
+        menu.addAction(a_quit)
+
+        self.tray.setContextMenu(menu)
+
+    def _show_about(self):
+        QMessageBox.information(
+            None,
+            f"О {APP_NAME}",
+            f"<h3>{APP_NAME} v{APP_VERSION}</h3>"
+            f"<p>{APP_TAGLINE}</p>"
+            f"<p style='color:#9d95b0;'>by <b>{APP_AUTHOR}</b></p>"
+            f"<p>Горячая клавиша: <b>{pretty_hotkey(self.cfg['hotkey'])}</b></p>"
+            f"<p>Папка для скринов: <b>{resolve_save_dir(self.cfg)}</b></p>",
+        )
+
+    def _start_hotkeys(self):
+        if self.hotkeys:
+            try:
+                self.hotkeys.stop()
+            except Exception:
+                pass
+        try:
+            self.hotkeys = keyboard.GlobalHotKeys({
+                self.cfg["hotkey"]: lambda: self.trigger_shot.emit()
+            })
+            self.hotkeys.start()
+        except Exception as e:
+            print("Hotkey error:", e)
+
+    @Slot()
+    def _take_shot(self):
+        if self.overlay and self.overlay.isVisible():
+            return
+        self.overlay = Overlay(self.cfg)
+        self.overlay.closed.connect(self._on_overlay_closed)
+        self.overlay.show()
+        self.overlay.raise_()
+        self.overlay.activateWindow()
+        self.overlay.setFocus()
+
+    def _on_overlay_closed(self):
+        self.overlay = None
+        config_save(self.cfg)
+
+    def _open_settings(self):
+        self.settings_win = SettingsWindow(self.cfg)
+        self.settings_win.saved.connect(self._on_settings_saved)
+        self.settings_win.show()
+        self.settings_win.raise_()
+        self.settings_win.activateWindow()
+
+    def _on_settings_saved(self, cfg):
+        self.cfg = cfg
+        self._start_hotkeys()
+        self._build_menu()
+        self.tray.showMessage(
+            APP_NAME,
+            f"Горячая клавиша: {pretty_hotkey(cfg['hotkey'])}\n"
+            f"Сохранение: {resolve_save_dir(cfg)}",
+            QSystemTrayIcon.Information, 2500,
+        )
+
+    def run(self):
+        return self.app.exec()
+
+
+if __name__ == "__main__":
+    sys.exit(App().run())

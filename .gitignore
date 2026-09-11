@@ -1,0 +1,41 @@
+# Flick — ignore list
+
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+
+# Virtual envs
+.venv/
+venv/
+env/
+
+# PyInstaller
+*.spec
+build/
+dist/
+
+# Inno Setup
+installer/
+
+# Generated
+flick.ico
+
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*~
+
+# Local
+config.json
+*.log
