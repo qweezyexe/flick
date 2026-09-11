@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (
     QApplication, QSystemTrayIcon, QMenu, QWidget, QVBoxLayout,
     QHBoxLayout, QGridLayout, QLabel, QFrame, QLineEdit, QPushButton,
     QMessageBox, QColorDialog, QSlider, QFileDialog,
-    QGraphicsOpacityEffect, QScrollArea,
+    QGraphicsOpacityEffect, QScrollArea, QCheckBox,
 )
 from PySide6.QtGui import (
     QIcon, QAction, QFont, QFontMetrics, QPainter, QPen, QColor,
@@ -31,6 +31,14 @@ from PySide6.QtNetwork import QLocalServer, QLocalSocket
 
 import mss
 from pynput import keyboard
+
+
+try:
+    QGuiApplication.setHighDpiScaleFactorRoundingPolicy(
+        Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
+    )
+except Exception:
+    pass
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -59,6 +67,7 @@ DEFAULTS = {
     "thickness": 3,
     "number_size": 18,
     "save_dir": "",
+    "auto_fullscreen_in_games": True,
 }
 
 
@@ -69,6 +78,7 @@ def config_load():
         "thickness": DEFAULTS["thickness"],
         "number_size": DEFAULTS["number_size"],
         "save_dir": DEFAULTS["save_dir"],
+        "auto_fullscreen_in_games": DEFAULTS["auto_fullscreen_in_games"],
     }
     if not CONFIG_PATH.exists():
         return cfg
@@ -84,7 +94,8 @@ def config_load():
 
     if isinstance(data.get("hotkeys"), dict):
         cfg["hotkeys"] = {**DEFAULT_HOTKEYS, **data["hotkeys"]}
-    for k in ("color", "thickness", "number_size", "save_dir"):
+    for k in ("color", "thickness", "number_size", "save_dir",
+              "auto_fullscreen_in_games"):
         if k in data:
             cfg[k] = data[k]
     return cfg
@@ -141,7 +152,7 @@ def pretty_hotkey(hk: str) -> str:
 
 APP_NAME = "Flick"
 APP_TAGLINE = "Скриншоты и аннотации"
-APP_VERSION = "1.1.0"
+APP_VERSION = "1.2.0"
 APP_AUTHOR = "qweezy.exe"
 APP_AUTHOR_URL = ""
 
@@ -293,6 +304,32 @@ QFrame#HeroCard {{
     border-radius: 20px;
 }}
 
+QFrame#WarnCard {{
+    background: rgba(245, 158, 11, 0.10);
+    border: 1px solid rgba(245, 158, 11, 0.45);
+    border-radius: 14px;
+}}
+QLabel#WarnIcon {{
+    background: rgba(245, 158, 11, 0.20);
+    border: 1px solid rgba(245, 158, 11, 0.55);
+    border-radius: 8px;
+    color: #fbbf24;
+    font-size: 18px;
+    font-weight: 700;
+}}
+QLabel#WarnTitle {{
+    color: #fbbf24;
+    font-size: 13px;
+    font-weight: 700;
+    background: transparent;
+    letter-spacing: 0.02em;
+}}
+QLabel#WarnBody {{
+    color: rgba(251, 191, 36, 0.85);
+    font-size: 12px;
+    background: transparent;
+}}
+
 QLabel#SectionLabel {{
     color: {TEXT};
     font-size: 12px;
@@ -305,27 +342,17 @@ QLabel#Hint {{
     font-size: 12px;
     background: transparent;
 }}
-QLabel#CurrentKey {{
-    color: #d8b4fe;
+QLabel#HotkeyLabel {{
+    color: {TEXT};
     font-size: 13px;
     font-weight: 600;
     background: transparent;
-    padding: 10px 14px;
-    border: 1px solid rgba(168, 85, 247, 0.35);
-    border-radius: 10px;
-    background: rgba(168, 85, 247, 0.08);
 }}
 QLabel#Version {{
     color: {TEXT_MUTED};
     font-size: 11px;
     background: transparent;
     letter-spacing: 0.04em;
-}}
-QLabel#HotkeyLabel {{
-    color: {TEXT};
-    font-size: 13px;
-    font-weight: 600;
-    background: transparent;
 }}
 
 QLabel#HeroName {{
@@ -386,10 +413,11 @@ QPushButton {{
     background: rgba(45, 36, 56, 0.7);
     border: 1px solid {BORDER};
     border-radius: 12px;
-    padding: 11px 20px;
+    padding: 12px 22px;
     color: {TEXT};
     font-weight: 600;
     font-size: 13px;
+    min-height: 22px;
 }}
 QPushButton:hover {{
     background: rgba(61, 52, 80, 0.9);
@@ -398,21 +426,24 @@ QPushButton:hover {{
 QPushButton:pressed {{
     background: {ACCENT_SOFT};
 }}
+
 QPushButton#Primary {{
-    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-        stop:0 #c084fc, stop:0.5 #a855f7, stop:1 #7c3aed);
-    border: none;
+    background-color: {ACCENT};
+    border: 1px solid {ACCENT};
     color: #ffffff;
     font-weight: 700;
-    padding: 12px 26px;
+    padding: 12px 28px;
+    min-height: 22px;
 }}
 QPushButton#Primary:hover {{
-    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-        stop:0 #d8b4fe, stop:0.5 #c084fc, stop:1 #a855f7);
+    background-color: {ACCENT_HOVER};
+    border: 1px solid {ACCENT_HOVER};
 }}
 QPushButton#Primary:pressed {{
-    background: {ACCENT_PRESSED};
+    background-color: {ACCENT_PRESSED};
+    border: 1px solid {ACCENT_PRESSED};
 }}
+
 QPushButton#Browse {{
     background: rgba(45, 36, 56, 0.7);
     border: 1px solid {BORDER};
@@ -435,6 +466,7 @@ QPushButton#ClearHotkey {{
     color: {TEXT_MUTED};
     min-width: 46px;
     max-width: 46px;
+    min-height: 46px;
 }}
 QPushButton#ClearHotkey:hover {{
     background: rgba(239, 68, 68, 0.15);
@@ -443,6 +475,27 @@ QPushButton#ClearHotkey:hover {{
 }}
 QPushButton#ClearHotkey:pressed {{
     background: rgba(239, 68, 68, 0.3);
+}}
+
+QCheckBox {{
+    color: {TEXT};
+    font-size: 13px;
+    spacing: 10px;
+    background: transparent;
+}}
+QCheckBox::indicator {{
+    width: 22px;
+    height: 22px;
+    border-radius: 6px;
+    border: 1px solid {BORDER_2};
+    background: rgba(15, 11, 22, 0.75);
+}}
+QCheckBox::indicator:hover {{
+    border: 1px solid {ACCENT};
+}}
+QCheckBox::indicator:checked {{
+    background-color: {ACCENT};
+    border: 1px solid {ACCENT_HOVER};
 }}
 """
 
@@ -470,7 +523,7 @@ QMenu::separator {{
 
 
 # ═══════════════════════════════════════════════════════════════════
-#  ЗАХВАТ ЭКРАНА
+#  ЗАХВАТ ЭКРАНА (мультимониторы)
 # ═══════════════════════════════════════════════════════════════════
 
 _dxcam_instance = None
@@ -490,12 +543,22 @@ def _get_dxcam():
     return _dxcam_instance if _dxcam_instance is not False else None
 
 
-def capture_fullscreen() -> QPixmap:
-    """Захват экрана. Сначала mss (надёжно), потом dxcam (для игр)."""
-    # 1) mss — работает везде
+def _has_multiple_monitors() -> bool:
+    try:
+        return len(QGuiApplication.screens()) > 1
+    except Exception:
+        return False
+
+
+def capture_all_monitors() -> QPixmap:
+    """Захват всего виртуального десктопа (все мониторы).
+
+    Используется как фон оверлея — чтобы можно было выделять
+    область через любые экраны.
+    """
     try:
         with mss.mss() as sct:
-            mon = sct.monitors[0]
+            mon = sct.monitors[0]  # виртуальный экран — все мониторы
             shot = sct.grab(mon)
             img = QImage(
                 shot.raw, shot.width, shot.height,
@@ -503,28 +566,100 @@ def capture_fullscreen() -> QPixmap:
             ).copy()
             return QPixmap.fromImage(img)
     except Exception as e:
-        print("mss error:", e)
+        print("mss all-monitors error:", e)
+    return None
 
-    # 2) dxcam — фолбэк для игр
-    cam = _get_dxcam()
-    if cam is not None:
-        try:
-            frame = cam.grab()
-            if frame is None:
-                import time
-                time.sleep(0.05)
+
+def capture_primary_monitor() -> QPixmap:
+    """Захват только основного монитора.
+
+    Порядок: dxcam (для игр, если один монитор) → mss с явной
+    геометрией основного монитора.
+    """
+    multi = _has_multiple_monitors()
+
+    # 1) dxcam — работает в играх, но только если один монитор
+    if not multi:
+        cam = _get_dxcam()
+        if cam is not None:
+            try:
                 frame = cam.grab()
-            if frame is not None:
-                h, w, _ = frame.shape
-                img = QImage(
-                    frame.data, w, h, w * 4,
-                    QImage.Format_ARGB32,
-                ).copy()
-                return QPixmap.fromImage(img)
-        except Exception as e:
-            print("dxcam grab error:", e)
+                if frame is None:
+                    import time
+                    time.sleep(0.05)
+                    frame = cam.grab()
+                if frame is not None:
+                    h, w, _ = frame.shape
+                    mid = frame[h // 2, w // 2]
+                    if int(mid[0]) + int(mid[1]) + int(mid[2]) > 30:
+                        img = QImage(
+                            frame.data, w, h, w * 4,
+                            QImage.Format_ARGB32,
+                        ).copy()
+                        return QPixmap.fromImage(img)
+            except Exception as e:
+                print("dxcam grab error:", e)
+
+    # 2) mss — основной монитор
+    try:
+        with mss.mss() as sct:
+            mons = sct.monitors  # [0]=all, [1]=primary, [2..]=others
+            if multi and len(mons) > 1:
+                mon = mons[1]
+            else:
+                mon = mons[0]
+            shot = sct.grab(mon)
+            img = QImage(
+                shot.raw, shot.width, shot.height,
+                shot.width * 4, QImage.Format_RGB32,
+            ).copy()
+            return QPixmap.fromImage(img)
+    except Exception as e:
+        print("mss primary error:", e)
 
     return None
+
+
+def _is_fullscreen_window_active() -> bool:
+    if sys.platform != "win32":
+        return False
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        user32 = ctypes.windll.user32
+        hwnd = user32.GetForegroundWindow()
+        if not hwnd:
+            return False
+
+        cls_buf = ctypes.create_unicode_buffer(256)
+        user32.GetClassNameW(hwnd, cls_buf, 256)
+        cls = cls_buf.value.lower()
+        if cls in ("progman", "workerw", "shell_traywnd"):
+            return False
+
+        rect = wintypes.RECT()
+        if not user32.GetWindowRect(hwnd, ctypes.byref(rect)):
+            return False
+        w = rect.right - rect.left
+        h = rect.bottom - rect.top
+
+        screen_w = user32.GetSystemMetrics(0)
+        screen_h = user32.GetSystemMetrics(1)
+
+        if w < screen_w - 8 or h < screen_h - 8:
+            return False
+
+        GWL_STYLE = -16
+        WS_CAPTION = 0x00C00000
+        style = user32.GetWindowLongW(hwnd, GWL_STYLE)
+        if style & WS_CAPTION:
+            return False
+
+        return True
+    except Exception as e:
+        print("fullscreen check error:", e)
+        return False
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -787,6 +922,18 @@ def _fade_in(widget, duration: int = 200):
     widget._fade_anim = anim
 
 
+def _compute_dpi_scale() -> float:
+    try:
+        screen = QGuiApplication.primaryScreen()
+        if screen is None:
+            return 1.0
+        dpi = screen.logicalDotsPerInch()
+        scale = dpi / 96.0
+        return max(1.0, min(2.5, scale))
+    except Exception:
+        return 1.0
+
+
 class Overlay(QWidget):
     closed = Signal()
 
@@ -799,9 +946,8 @@ class Overlay(QWidget):
         self.number_counter = 1
         self.number_size = cfg.get("number_size", 18)
 
-        # Обычное окно без рамки, поверх всех.
-        # БЕЗ WA_TranslucentBackground — иначе на Windows клики
-        # уходят в окна под оверлеем.
+        self._scale = _compute_dpi_scale()
+
         self.setWindowFlags(
             Qt.Window | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
         )
@@ -809,7 +955,8 @@ class Overlay(QWidget):
         self.setCursor(Qt.CrossCursor)
         self.setMouseTracking(True)
 
-        bg = capture_fullscreen()
+        # Оверлей всегда покрывает ВСЕ мониторы
+        bg = capture_all_monitors()
 
         geo = QRect()
         for s in QGuiApplication.screens():
@@ -837,17 +984,39 @@ class Overlay(QWidget):
         self.drag_offset = QPoint(0, 0)
         self.drag_moved = False
 
-        # Защита от повторных mousePress во время drag
         self._mouse_pressed = False
 
-    # ─── Фокус ───
     def showEvent(self, e):
         super().showEvent(e)
         self.raise_()
         self.activateWindow()
         self.setFocus(Qt.ActiveWindowFocusReason)
+        self._force_topmost()
+        QTimer.singleShot(50, self._force_topmost)
 
-    # ─── Paint ───
+    def _force_topmost(self):
+        if sys.platform != "win32":
+            return
+        try:
+            import ctypes
+            user32 = ctypes.windll.user32
+            HWND_TOPMOST = -1
+            SWP_NOMOVE = 0x0002
+            SWP_NOSIZE = 0x0001
+            SWP_NOACTIVATE = 0x0010
+            SWP_SHOWWINDOW = 0x0040
+            hwnd = int(self.winId())
+            user32.SetWindowPos(
+                hwnd, HWND_TOPMOST,
+                0, 0, 0, 0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW
+            )
+            self.raise_()
+            self.activateWindow()
+            self.setFocus(Qt.ActiveWindowFocusReason)
+        except Exception as e:
+            print("SetWindowPos error:", e)
+
     def paintEvent(self, e):
         p = QPainter(self)
         p.drawPixmap(0, 0, self.bg)
@@ -866,7 +1035,7 @@ class Overlay(QWidget):
 
             p.setPen(Qt.NoPen)
             p.setBrush(QColor(ACCENT))
-            hs = 5
+            hs = int(5 * self._scale)
             for pt in (sel.topLeft(), sel.topRight(),
                        sel.bottomLeft(), sel.bottomRight()):
                 p.drawEllipse(pt, hs, hs)
@@ -1228,13 +1397,15 @@ class Overlay(QWidget):
             )
 
     def _show_toolbar(self, sel):
+        s = self._scale
         self.toolbar = QFrame(self)
         self.toolbar.setObjectName("Toolbar")
         self.toolbar.setStyleSheet(TOOLBAR_QSS)
 
         lay = QHBoxLayout(self.toolbar)
-        lay.setContentsMargins(10, 7, 10, 7)
-        lay.setSpacing(3)
+        m = int(10 * s)
+        lay.setContentsMargins(m, int(7 * s), m, int(7 * s))
+        lay.setSpacing(max(2, int(3 * s)))
 
         tools = [
             ("select", "Выделение"),
@@ -1247,15 +1418,19 @@ class Overlay(QWidget):
             ("text", "Текст"),
             ("number", "Цифра"),
         ]
+
+        btn_size = int(34 * s)
+        icon_size = int(18 * s)
+
         self.tool_buttons = {}
         self.number_btn = None
         for name, tip in tools:
             b = QPushButton()
-            b.setIcon(make_icon(name, TEXT, 18))
-            b.setIconSize(QSize(18, 18))
+            b.setIcon(make_icon(name, TEXT, icon_size))
+            b.setIconSize(QSize(icon_size, icon_size))
             b.setCheckable(True)
             b.setChecked(name == "select")
-            b.setFixedSize(34, 34)
+            b.setFixedSize(btn_size, btn_size)
             b.setToolTip(tip)
             b.setCursor(Qt.PointingHandCursor)
             b.clicked.connect(lambda _, n=name: self._set_tool(n))
@@ -1266,12 +1441,13 @@ class Overlay(QWidget):
 
         lay.addWidget(self._vsep())
 
+        swatch = int(22 * s)
         self.color_buttons = []
         palette = [ACCENT, "#ec4899", "#ef4444", "#f59e0b",
                    "#10b981", "#3b82f6", "#ffffff", "#000000"]
         for c in palette:
             b = QPushButton()
-            b.setFixedSize(22, 22)
+            b.setFixedSize(swatch, swatch)
             b.setStyleSheet(self._swatch_style(c, c == self.current_color))
             b.setToolTip(c)
             b.setCursor(Qt.PointingHandCursor)
@@ -1282,9 +1458,9 @@ class Overlay(QWidget):
         b_custom = QPushButton("…")
         b_custom.setStyleSheet(
             f"color:{TEXT}; background:{SURFACE_2}; "
-            f"border:1px solid {BORDER}; border-radius:11px;"
+            f"border:1px solid {BORDER}; border-radius:{swatch//2}px;"
         )
-        b_custom.setFixedSize(22, 22)
+        b_custom.setFixedSize(swatch, swatch)
         b_custom.setToolTip("Свой цвет…")
         b_custom.setCursor(Qt.PointingHandCursor)
         b_custom.clicked.connect(self._pick_color)
@@ -1295,7 +1471,7 @@ class Overlay(QWidget):
         self.slider = QSlider(Qt.Horizontal)
         self.slider.setRange(1, 20)
         self.slider.setValue(self.current_width)
-        self.slider.setFixedWidth(90)
+        self.slider.setFixedWidth(int(90 * s))
         self.slider.setToolTip("Толщина кисти")
         self.slider.valueChanged.connect(self._set_width)
         lay.addWidget(self.slider)
@@ -1303,9 +1479,9 @@ class Overlay(QWidget):
         lay.addWidget(self._vsep())
 
         b_copy = QPushButton()
-        b_copy.setIcon(make_icon("copy", TEXT, 18))
-        b_copy.setIconSize(QSize(18, 18))
-        b_copy.setFixedSize(34, 34)
+        b_copy.setIcon(make_icon("copy", TEXT, icon_size))
+        b_copy.setIconSize(QSize(icon_size, icon_size))
+        b_copy.setFixedSize(btn_size, btn_size)
         b_copy.setToolTip("Копировать (Ctrl+C / Enter)")
         b_copy.setCursor(Qt.PointingHandCursor)
         b_copy.clicked.connect(self._copy_to_clipboard)
@@ -1313,19 +1489,20 @@ class Overlay(QWidget):
 
         b_save = QPushButton("Сохранить")
         b_save.setObjectName("Primary")
-        b_save.setIcon(make_icon("save", "#ffffff", 16))
-        b_save.setIconSize(QSize(16, 16))
+        b_save.setIcon(make_icon("save", "#ffffff", int(16 * s)))
+        b_save.setIconSize(QSize(int(16 * s), int(16 * s)))
         b_save.setToolTip("Сохранить файл (Ctrl+S)")
         b_save.setCursor(Qt.PointingHandCursor)
+        b_save.setMinimumHeight(btn_size)
         b_save.clicked.connect(self._save_to_file)
         lay.addWidget(b_save)
 
         self.toolbar.adjustSize()
         tw, th = self.toolbar.width(), self.toolbar.height()
         x = max(8, min(sel.left(), self.width() - tw - 8))
-        y = sel.top() - th - 10
+        y = sel.top() - th - int(10 * s)
         if y < 8:
-            y = sel.bottom() + 10
+            y = sel.bottom() + int(10 * s)
         self.toolbar.move(x, y)
         self.toolbar.show()
         self.toolbar.raise_()
@@ -1351,7 +1528,8 @@ class Overlay(QWidget):
     def _swatch_style(self, color, active):
         border = ACCENT if active else BORDER
         w = 2 if active else 1
-        return (f"background:{color}; border-radius:11px; "
+        radius = int(11 * self._scale)
+        return (f"background:{color}; border-radius:{radius}px; "
                 f"border:{w}px solid {border};")
 
     def _set_tool(self, name):
@@ -1384,9 +1562,9 @@ class Overlay(QWidget):
         self.text_edit.setStyleSheet(
             f"background: rgba(15,11,22,200); color:{TEXT}; "
             f"border: 1px dashed {ACCENT}; border-radius:6px; "
-            f"padding: 4px 8px; font-size: 14px;"
+            f"padding: 4px 8px; font-size: {int(14 * self._scale)}px;"
         )
-        self.text_edit.setMinimumWidth(180)
+        self.text_edit.setMinimumWidth(int(180 * self._scale))
         self.text_edit.move(pos)
         self.text_edit.show()
         self.text_edit.setFocus()
@@ -1722,7 +1900,7 @@ class SettingsWindow(QWidget):
         self.setWindowTitle(f"{APP_NAME} — Настройки · by {APP_AUTHOR}")
         self.setWindowIcon(app_icon())
         self.setMinimumSize(620, 780)
-        self.resize(660, 860)
+        self.resize(660, 1000)
         self.setStyleSheet(SETTINGS_QSS)
 
         self.bg = BlobBackground(self)
@@ -1745,8 +1923,8 @@ class SettingsWindow(QWidget):
         content.setStyleSheet("background: transparent;")
 
         root = QVBoxLayout(content)
-        root.setContentsMargins(24, 16, 24, 20)
-        root.setSpacing(12)
+        root.setContentsMargins(24, 16, 24, 24)
+        root.setSpacing(14)
 
         # Titlebar
         titlebar = QFrame()
@@ -1864,6 +2042,76 @@ class SettingsWindow(QWidget):
 
         root.addWidget(card1)
 
+        # Behavior card
+        card_behavior = QFrame()
+        card_behavior.setObjectName("Card")
+        cb = QVBoxLayout(card_behavior)
+        cb.setContentsMargins(22, 18, 22, 18)
+        cb.setSpacing(10)
+
+        sb = QLabel("ПОВЕДЕНИЕ")
+        sb.setObjectName("SectionLabel")
+        cb.addWidget(sb)
+
+        self.cb_fullscreen = QCheckBox(
+            "В играх делать полный скриншот сразу в буфер"
+        )
+        self.cb_fullscreen.setChecked(
+            self.cfg.get("auto_fullscreen_in_games", True)
+        )
+        self.cb_fullscreen.setCursor(Qt.PointingHandCursor)
+        cb.addWidget(self.cb_fullscreen)
+
+        hint_behavior = QLabel(
+            "Если включено: F7 в полноэкранной игре сразу копирует "
+            "основной монитор в буфер, минуя оверлей.\n"
+            "Если выключено: F7 пытается открыть оверлей даже в игре."
+        )
+        hint_behavior.setObjectName("Hint")
+        hint_behavior.setWordWrap(True)
+        cb.addWidget(hint_behavior)
+
+        root.addWidget(card_behavior)
+
+        # Warning
+        card_warn = QFrame()
+        card_warn.setObjectName("WarnCard")
+        cw = QHBoxLayout(card_warn)
+        cw.setContentsMargins(20, 16, 20, 16)
+        cw.setSpacing(14)
+
+        warn_icon = QLabel("⚠")
+        warn_icon.setObjectName("WarnIcon")
+        warn_icon.setFixedSize(32, 32)
+        warn_icon.setAlignment(Qt.AlignCenter)
+        cw.addWidget(warn_icon, 0, Qt.AlignTop)
+
+        wtxt = QVBoxLayout()
+        wtxt.setSpacing(4)
+
+        wtitle = QLabel("Известное ограничение в играх")
+        wtitle.setObjectName("WarnTitle")
+        wtxt.addWidget(wtitle)
+
+        wbody = QLabel(
+            "В полноэкранных играх (особенно в режиме "
+            "Exclusive Fullscreen) оверлей поверх игры может "
+            "не отрисоваться или клики не будут доходить до "
+            "панели инструментов. В Borderless Fullscreen "
+            "работает стабильно.\n\n"
+            "При нескольких мониторах F8 и F9 снимают только "
+            "основной экран. Оверлей (F7) по-прежнему покрывает "
+            "все мониторы — можно выделять область через любой.\n\n"
+            "Сейчас правим — в ближайших версиях оверлей "
+            "будет корректно работать и в эксклюзивном полном экране."
+        )
+        wbody.setObjectName("WarnBody")
+        wbody.setWordWrap(True)
+        wtxt.addWidget(wbody)
+
+        cw.addLayout(wtxt, 1)
+        root.addWidget(card_warn)
+
         # Folder card
         card2 = QFrame()
         card2.setObjectName("Card")
@@ -1974,15 +2222,16 @@ class SettingsWindow(QWidget):
         c3.addLayout(grid)
         root.addWidget(card3)
 
-        root.addStretch()
+        root.addSpacing(6)
 
         # Buttons
         btns = QHBoxLayout()
-        btns.setSpacing(10)
+        btns.setSpacing(12)
 
         b_reset = QPushButton("Сбросить всё")
         b_reset.setCursor(Qt.PointingHandCursor)
-        b_reset.setMinimumHeight(44)
+        b_reset.setMinimumHeight(46)
+        b_reset.setMinimumWidth(160)
         b_reset.clicked.connect(self._reset_all)
         btns.addWidget(b_reset)
 
@@ -1990,18 +2239,21 @@ class SettingsWindow(QWidget):
 
         b_cancel = QPushButton("Отмена")
         b_cancel.setCursor(Qt.PointingHandCursor)
-        b_cancel.setMinimumHeight(44)
+        b_cancel.setMinimumHeight(46)
+        b_cancel.setMinimumWidth(120)
         b_cancel.clicked.connect(self.close)
         btns.addWidget(b_cancel)
 
         b_save = QPushButton("Сохранить")
         b_save.setObjectName("Primary")
         b_save.setCursor(Qt.PointingHandCursor)
-        b_save.setMinimumHeight(44)
-        b_save.setMinimumWidth(150)
+        b_save.setMinimumHeight(46)
+        b_save.setMinimumWidth(160)
         b_save.clicked.connect(self._save)
         btns.addWidget(b_save)
         root.addLayout(btns)
+
+        root.addSpacing(4)
 
         ver = QLabel(f"v{APP_VERSION} · by {APP_AUTHOR}")
         ver.setObjectName("Version")
@@ -2063,6 +2315,7 @@ class SettingsWindow(QWidget):
             for k, edit in self.hotkey_edits.items():
                 edit.set_value(DEFAULT_HOTKEYS[k])
             self.dir_edit.setText("")
+            self.cb_fullscreen.setChecked(True)
 
     def showEvent(self, e):
         super().showEvent(e)
@@ -2139,6 +2392,7 @@ class SettingsWindow(QWidget):
 
         self.cfg["hotkeys"] = values
         self.cfg["save_dir"] = d
+        self.cfg["auto_fullscreen_in_games"] = self.cb_fullscreen.isChecked()
         config_save(self.cfg)
         self.saved.emit(self.cfg)
         self.close()
@@ -2341,6 +2595,19 @@ class App(QObject):
     def _take_shot(self):
         if self.overlay and self.overlay.isVisible():
             return
+
+        if self.cfg.get("auto_fullscreen_in_games", True) \
+                and _is_fullscreen_window_active():
+            pm = capture_primary_monitor()
+            if pm is not None:
+                QGuiApplication.clipboard().setImage(pm.toImage())
+                self.tray.showMessage(
+                    APP_NAME,
+                    "Полный экран скопирован в буфер (режим игры)",
+                    QSystemTrayIcon.Information, 1800,
+                )
+                return
+
         self.overlay = Overlay(self.cfg)
         self.overlay.closed.connect(self._on_overlay_closed)
         self.overlay.show()
@@ -2350,7 +2617,7 @@ class App(QObject):
 
     @Slot()
     def _fullscreen_copy(self):
-        pm = capture_fullscreen()
+        pm = capture_primary_monitor()
         if pm is None:
             self.tray.showMessage(
                 APP_NAME, "Не удалось захватить экран",
@@ -2359,13 +2626,13 @@ class App(QObject):
             return
         QGuiApplication.clipboard().setImage(pm.toImage())
         self.tray.showMessage(
-            APP_NAME, "Полный экран скопирован в буфер",
+            APP_NAME, "Основной монитор скопирован в буфер",
             QSystemTrayIcon.Information, 1800,
         )
 
     @Slot()
     def _fullscreen_save(self):
-        pm = capture_fullscreen()
+        pm = capture_primary_monitor()
         if pm is None:
             self.tray.showMessage(
                 APP_NAME, "Не удалось захватить экран",
