@@ -14,7 +14,7 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    excludes=['tkinter', 'PySide6.QtWebEngineCore', 'PySide6.QtQuick', 'PySide6.Qt3DCore'],
     noarchive=False,
     optimize=0,
 )

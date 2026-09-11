@@ -25,6 +25,7 @@ from PySide6.QtGui import (
 from PySide6.QtCore import (
     Qt, QObject, Signal, Slot, QRect, QPoint, QPointF, QSize,
     QStandardPaths, QPropertyAnimation, QEasingCurve, QRectF, QUrl,
+    QTimer,
 )
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 
@@ -179,103 +180,180 @@ QFrame#Sep {{ color: {BORDER}; background: {BORDER}; max-width: 1px; }}
 
 SETTINGS_QSS = f"""
 QWidget#Root {{
-    background: {BG};
+    background: transparent;
     color: {TEXT};
-    font-family: "Segoe UI", "SF Pro Display", Inter, sans-serif;
+    font-family: "Segoe UI Variable Display", "Segoe UI",
+                 "SF Pro Display", Inter, sans-serif;
 }}
-QLabel#SectionLabel {{
+
+/* ─── Заголовок окна ─── */
+QFrame#TitleBar {{
+    background: transparent;
+}}
+QLabel#TitleBarLogo {{
+    background: transparent;
+}}
+QLabel#TitleBarText {{
     color: {TEXT};
     font-size: 13px;
     font-weight: 600;
     background: transparent;
 }}
-QLabel#Hint {{
+QLabel#TitleBarAuthor {{
     color: {TEXT_MUTED};
     font-size: 11px;
     background: transparent;
 }}
+QPushButton#CloseBtn {{
+    background: transparent;
+    border: none;
+    color: {TEXT_MUTED};
+    font-size: 18px;
+    border-radius: 8px;
+    padding: 0;
+    font-weight: 400;
+}}
+QPushButton#CloseBtn:hover {{
+    background: #ff5f57;
+    color: #ffffff;
+}}
+QPushButton#CloseBtn:pressed {{
+    background: #d94b43;
+}}
+
+/* ─── Карточки ─── */
+QFrame#Card {{
+    background: rgba(26, 20, 40, 0.72);
+    border: 1px solid {BORDER};
+    border-radius: 18px;
+}}
+QFrame#HeroCard {{
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+        stop:0 #c084fc, stop:0.5 #a855f7, stop:1 #6d28d9);
+    border: none;
+    border-radius: 20px;
+}}
+
+/* ─── Заголовки внутри карточек ─── */
+QLabel#SectionLabel {{
+    color: {TEXT};
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    background: transparent;
+}}
+QLabel#Hint {{
+    color: {TEXT_MUTED};
+    font-size: 12px;
+    background: transparent;
+}}
 QLabel#CurrentKey {{
-    color: {ACCENT_HOVER};
-    font-size: 13px;
+    color: #d8b4fe;
+    font-size: 14px;
     font-weight: 600;
     background: transparent;
+    padding: 10px 14px;
+    border: 1px solid rgba(168, 85, 247, 0.35);
+    border-radius: 10px;
+    background: rgba(168, 85, 247, 0.08);
 }}
 QLabel#Version {{
     color: {TEXT_MUTED};
     font-size: 11px;
     background: transparent;
+    letter-spacing: 0.04em;
 }}
-QLabel#HeaderAuthor {{
-    color: rgba(255,255,255,0.75);
+
+/* ─── Hero card ─── */
+QLabel#HeroName {{
+    color: #ffffff;
+    font-size: 26px;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    background: transparent;
+}}
+QLabel#HeroTag {{
+    color: rgba(255,255,255,0.88);
+    font-size: 13px;
+    background: transparent;
+}}
+QLabel#HeroAuthor {{
+    color: rgba(255,255,255,0.72);
     font-size: 11px;
     background: transparent;
+    letter-spacing: 0.04em;
 }}
-QFrame#Card {{
-    background: {SURFACE};
+QLabel#HeroBadge {{
+    color: #ffffff;
+    font-size: 11px;
+    font-weight: 700;
+    background: rgba(255, 255, 255, 0.18);
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    border-radius: 999px;
+    padding: 5px 14px;
+    letter-spacing: 0.03em;
+}}
+
+/* ─── Поля ввода ─── */
+QLineEdit {{
+    background: rgba(15, 11, 22, 0.75);
     border: 1px solid {BORDER};
     border-radius: 12px;
-}}
-QFrame#HeaderCard {{
-    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
-        stop:0 {ACCENT}, stop:1 {ACCENT_PRESSED});
-    border-radius: 14px;
-    border: none;
-}}
-QLabel#HeaderTitle {{
-    color: white;
-    font-size: 18px;
-    font-weight: 700;
-    background: transparent;
-}}
-QLabel#HeaderSub {{
-    color: rgba(255,255,255,0.85);
-    font-size: 12px;
-    background: transparent;
-}}
-QLineEdit {{
-    background: {BG_DEEP};
-    border: 1px solid {BORDER};
-    border-radius: 8px;
-    padding: 10px 14px;
+    padding: 12px 16px;
     color: {TEXT};
-    font-size: 13px;
+    font-size: 14px;
     selection-background-color: {ACCENT};
+    selection-color: #ffffff;
 }}
-QLineEdit:hover {{ border: 1px solid {BORDER_2}; }}
-QLineEdit:focus {{ border: 1px solid {ACCENT}; }}
+QLineEdit:hover {{
+    border: 1px solid {BORDER_2};
+}}
+QLineEdit:focus {{
+    border: 1px solid {ACCENT};
+    background: rgba(15, 11, 22, 0.95);
+}}
+
+/* ─── Кнопки ─── */
 QPushButton {{
-    background: {SURFACE_2};
+    background: rgba(45, 36, 56, 0.7);
     border: 1px solid {BORDER};
-    border-radius: 8px;
-    padding: 10px 18px;
+    border-radius: 12px;
+    padding: 11px 20px;
     color: {TEXT};
     font-weight: 600;
     font-size: 13px;
 }}
 QPushButton:hover {{
-    background: {BORDER};
+    background: rgba(61, 52, 80, 0.9);
     border: 1px solid {BORDER_2};
 }}
-QPushButton:pressed {{ background: {ACCENT_SOFT}; }}
+QPushButton:pressed {{
+    background: {ACCENT_SOFT};
+}}
 QPushButton#Primary {{
-    background: {ACCENT};
-    border: 1px solid {ACCENT};
-    color: white;
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+        stop:0 #c084fc, stop:0.5 #a855f7, stop:1 #7c3aed);
+    border: none;
+    color: #ffffff;
+    font-weight: 700;
+    padding: 12px 26px;
 }}
 QPushButton#Primary:hover {{
-    background: {ACCENT_HOVER};
-    border: 1px solid {ACCENT_HOVER};
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+        stop:0 #d8b4fe, stop:0.5 #c084fc, stop:1 #a855f7);
 }}
-QPushButton#Primary:pressed {{ background: {ACCENT_PRESSED}; }}
+QPushButton#Primary:pressed {{
+    background: {ACCENT_PRESSED};
+}}
 QPushButton#Browse {{
-    background: {SURFACE_2};
+    background: rgba(45, 36, 56, 0.7);
     border: 1px solid {BORDER};
-    padding: 10px 16px;
-    min-width: 40px;
-    font-weight: 700;
+    padding: 11px 20px;
+    min-width: 90px;
+    font-weight: 600;
 }}
 QPushButton#Browse:hover {{
-    background: {ACCENT_SOFT};
+    background: rgba(168, 85, 247, 0.15);
     border: 1px solid {ACCENT};
     color: {ACCENT_HOVER};
 }}
@@ -1241,6 +1319,92 @@ class Overlay(QWidget):
 
 
 # ═══════════════════════════════════════════════════════════════════
+#  АНИМИРОВАННЫЙ ФОН НАСТРОЕК
+# ═══════════════════════════════════════════════════════════════════
+
+class BlobBackground(QWidget):
+    """Анимированный фон: тёмная основа + плавающие градиентные пятна."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setAttribute(Qt.WA_TransparentForMouseEvents)
+        self._phase = 0.0
+        self._radius = 22.0
+        self._timer = QTimer(self)
+        self._timer.timeout.connect(self._tick)
+        self._timer.start(55)          # ~18 кадров в секунду
+
+    def set_corner_radius(self, r: float):
+        self._radius = float(r)
+        self.update()
+
+    def _tick(self):
+        if not self.isVisible():
+            return
+        self._phase = (self._phase + 0.0085) % (2 * math.pi)
+        self.update()
+
+    def paintEvent(self, e):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+
+        w, h = float(self.width()), float(self.height())
+        if w < 4 or h < 4:
+            return
+
+        # Обрезаем всё по скруглённому прямоугольнику
+        path = QPainterPath()
+        path.addRoundedRect(QRectF(0, 0, w, h),
+                            self._radius, self._radius)
+        p.setClipPath(path)
+
+        # Базовая заливка
+        p.fillRect(self.rect(), QColor("#0f0b16"))
+
+        # Три плавающих пятна
+        blobs = [
+            (0.18, 0.10, 0.55, "#7c3aed", 0.0),
+            (0.88, 0.42, 0.50, "#a855f7", math.pi * 0.7),
+            (0.52, 0.98, 0.48, "#6d28d9", math.pi * 1.35),
+        ]
+        diag = (w * w + h * h) ** 0.5
+        for bx, by, size, color, off in blobs:
+            ph = self._phase + off
+            cx = (bx + 0.055 * math.sin(ph)) * w
+            cy = (by + 0.045 * math.cos(ph * 0.85)) * h
+            r = size * diag * 0.5
+
+            grad = QRadialGradient(QPointF(cx, cy), r)
+            c1 = QColor(color)
+            c1.setAlpha(115)
+            grad.setColorAt(0.0, c1)
+            c2 = QColor(color)
+            c2.setAlpha(0)
+            grad.setColorAt(1.0, c2)
+
+            p.setPen(Qt.NoPen)
+            p.setBrush(QBrush(grad))
+            p.drawEllipse(QPointF(cx, cy), r, r)
+
+        # Виньетка по краям, чтобы центр читался
+        vignette = QRadialGradient(
+            QPointF(w * 0.5, h * 0.35),
+            max(w, h) * 0.9,
+            QPointF(w * 0.5, h * 0.35),
+        )
+        vignette.setColorAt(0.0, QColor(15, 11, 22, 0))
+        vignette.setColorAt(1.0, QColor(15, 11, 22, 140))
+        p.setBrush(QBrush(vignette))
+        p.drawRect(self.rect())
+
+        # Тонкая внешняя обводка
+        p.setBrush(Qt.NoBrush)
+        p.setPen(QPen(QColor(61, 52, 80, 180), 1))
+        p.drawRoundedRect(QRectF(0.5, 0.5, w - 1, h - 1),
+                          self._radius, self._radius)
+
+
+# ═══════════════════════════════════════════════════════════════════
 #  НАСТРОЙКИ
 # ═══════════════════════════════════════════════════════════════════
 
@@ -1302,69 +1466,117 @@ class SettingsWindow(QWidget):
 
     def __init__(self, cfg):
         super().__init__()
-        self.setObjectName("Root")
-        self.setWindowTitle(f"{APP_NAME} — Настройки · by {APP_AUTHOR}")
-        self.setMinimumSize(560, 780)
-        self.resize(620, 880)
-        self.setWindowIcon(app_icon())
-        self.setStyleSheet(SETTINGS_QSS)
         self.cfg = dict(cfg)
 
+        self.setWindowFlags(Qt.FramelessWindowHint | Qt.Window)
+        self.setAttribute(Qt.WA_TranslucentBackground)
+        self.setWindowTitle(f"{APP_NAME} — Настройки · by {APP_AUTHOR}")
+        self.setWindowIcon(app_icon())
+        self.setMinimumSize(600, 860)
+        self.resize(640, 900)
+        self.setStyleSheet(SETTINGS_QSS)
+
+        # Фон-«капля» на весь виджет
+        self.bg = BlobBackground(self)
+        self.bg.lower()
+
+        self._drag_pos = None
+
         root = QVBoxLayout(self)
-        root.setContentsMargins(24, 24, 24, 24)
-        root.setSpacing(14)
+        root.setContentsMargins(24, 16, 24, 20)
+        root.setSpacing(12)
 
-        header = QFrame()
-        header.setObjectName("HeaderCard")
-        hl = QHBoxLayout(header)
-        hl.setContentsMargins(20, 18, 20, 18)
-        hl.setSpacing(14)
+        # ─── Заголовок окна ───
+        titlebar = QFrame()
+        titlebar.setObjectName("TitleBar")
+        titlebar.setFixedHeight(44)
+        tb = QHBoxLayout(titlebar)
+        tb.setContentsMargins(0, 0, 0, 0)
+        tb.setSpacing(10)
 
-        logo_lbl = QLabel()
-        logo_lbl.setPixmap(_logo_pixmap(44))
-        logo_lbl.setFixedSize(44, 44)
-        logo_lbl.setStyleSheet("background: transparent;")
-        hl.addWidget(logo_lbl)
+        tb_logo = QLabel()
+        tb_logo.setObjectName("TitleBarLogo")
+        tb_logo.setPixmap(_logo_pixmap(26))
+        tb_logo.setFixedSize(26, 26)
+        tb.addWidget(tb_logo)
+
+        tb_text = QLabel(f"{APP_NAME} — Настройки")
+        tb_text.setObjectName("TitleBarText")
+        tb.addWidget(tb_text)
+
+        tb_author = QLabel(f"by {APP_AUTHOR}")
+        tb_author.setObjectName("TitleBarAuthor")
+        tb.addWidget(tb_author)
+
+        tb.addStretch()
+
+        self.close_btn = QPushButton("✕")
+        self.close_btn.setObjectName("CloseBtn")
+        self.close_btn.setFixedSize(30, 30)
+        self.close_btn.setCursor(Qt.PointingHandCursor)
+        self.close_btn.clicked.connect(self.close)
+        tb.addWidget(self.close_btn)
+
+        root.addWidget(titlebar)
+
+        # ─── Hero card ───
+        hero = QFrame()
+        hero.setObjectName("HeroCard")
+        hl = QHBoxLayout(hero)
+        hl.setContentsMargins(24, 20, 24, 20)
+        hl.setSpacing(18)
+
+        hero_logo = QLabel()
+        hero_logo.setPixmap(_logo_pixmap(60))
+        hero_logo.setFixedSize(60, 60)
+        hero_logo.setStyleSheet("background: transparent;")
+        hl.addWidget(hero_logo)
 
         htxt = QVBoxLayout()
-        htxt.setSpacing(1)
-        t1 = QLabel(APP_NAME)
-        t1.setObjectName("HeaderTitle")
-        htxt.addWidget(t1)
-        t2 = QLabel(APP_TAGLINE)
-        t2.setObjectName("HeaderSub")
-        htxt.addWidget(t2)
-        t3 = QLabel(f"by {APP_AUTHOR}")
-        t3.setObjectName("HeaderAuthor")
-        htxt.addWidget(t3)
+        htxt.setSpacing(2)
+        hn = QLabel(APP_NAME)
+        hn.setObjectName("HeroName")
+        htxt.addWidget(hn)
+        ht = QLabel(APP_TAGLINE)
+        ht.setObjectName("HeroTag")
+        htxt.addWidget(ht)
+        ha = QLabel(f"by {APP_AUTHOR}")
+        ha.setObjectName("HeroAuthor")
+        htxt.addWidget(ha)
         hl.addLayout(htxt)
         hl.addStretch()
 
-        root.addWidget(header)
+        badge = QLabel(f"v{APP_VERSION}")
+        badge.setObjectName("HeroBadge")
+        badge.setAlignment(Qt.AlignCenter)
+        hl.addWidget(badge, 0, Qt.AlignTop)
 
+        root.addWidget(hero)
+
+        # ─── Карточка: горячая клавиша ───
         card1 = QFrame()
         card1.setObjectName("Card")
         c1 = QVBoxLayout(card1)
-        c1.setContentsMargins(20, 18, 20, 18)
+        c1.setContentsMargins(22, 18, 22, 18)
         c1.setSpacing(10)
 
-        sec = QLabel("Горячая клавиша")
-        sec.setObjectName("SectionLabel")
-        c1.addWidget(sec)
+        s1 = QLabel("ГОРЯЧАЯ КЛАВИША")
+        s1.setObjectName("SectionLabel")
+        c1.addWidget(s1)
 
         self.hotkey_edit = HotkeyEdit()
         self.hotkey_edit.setText(self.cfg["hotkey"])
         self.hotkey_edit.changed.connect(self._on_hotkey_changed)
-        self.hotkey_edit.setMinimumHeight(42)
+        self.hotkey_edit.setMinimumHeight(46)
         c1.addWidget(self.hotkey_edit)
 
-        hint = QLabel(
+        h1 = QLabel(
             "Кликните по полю и нажмите комбинацию. "
             "Например: F7, Ctrl+Shift+S, Alt+PrintScreen."
         )
-        hint.setObjectName("Hint")
-        hint.setWordWrap(True)
-        c1.addWidget(hint)
+        h1.setObjectName("Hint")
+        h1.setWordWrap(True)
+        c1.addWidget(h1)
 
         self.current_key_lbl = QLabel()
         self.current_key_lbl.setObjectName("CurrentKey")
@@ -1373,18 +1585,19 @@ class SettingsWindow(QWidget):
 
         root.addWidget(card1)
 
+        # ─── Карточка: папка сохранения ───
         card2 = QFrame()
         card2.setObjectName("Card")
         c2 = QVBoxLayout(card2)
-        c2.setContentsMargins(20, 18, 20, 18)
+        c2.setContentsMargins(22, 18, 22, 18)
         c2.setSpacing(10)
 
-        sec2 = QLabel("Папка для сохранения скриншотов")
-        sec2.setObjectName("SectionLabel")
-        c2.addWidget(sec2)
+        s2 = QLabel("ПАПКА ДЛЯ СОХРАНЕНИЯ СКРИНШОТОВ")
+        s2.setObjectName("SectionLabel")
+        c2.addWidget(s2)
 
         row = QHBoxLayout()
-        row.setSpacing(8)
+        row.setSpacing(10)
 
         self.dir_edit = QLineEdit()
         self.dir_edit.setPlaceholderText(default_save_dir())
@@ -1392,60 +1605,62 @@ class SettingsWindow(QWidget):
         self.dir_edit.setToolTip(
             "Оставьте пустым, чтобы сохранять в системную «Изображения»"
         )
-        self.dir_edit.setMinimumHeight(42)
+        self.dir_edit.setMinimumHeight(44)
         row.addWidget(self.dir_edit, 1)
 
         b_browse = QPushButton("Обзор…")
         b_browse.setObjectName("Browse")
         b_browse.setCursor(Qt.PointingHandCursor)
-        b_browse.setMinimumHeight(42)
-        b_browse.setMinimumWidth(110)
+        b_browse.setMinimumHeight(44)
         b_browse.clicked.connect(self._browse_dir)
         row.addWidget(b_browse)
 
         c2.addLayout(row)
 
         row2 = QHBoxLayout()
-        row2.setSpacing(8)
+        row2.setSpacing(10)
 
         b_default = QPushButton("По умолчанию")
         b_default.setCursor(Qt.PointingHandCursor)
-        b_default.setMinimumHeight(38)
+        b_default.setMinimumHeight(40)
         b_default.clicked.connect(self._reset_dir)
         row2.addWidget(b_default)
 
         b_open = QPushButton("Открыть папку")
         b_open.setCursor(Qt.PointingHandCursor)
-        b_open.setMinimumHeight(38)
+        b_open.setMinimumHeight(40)
         b_open.clicked.connect(self._open_dir)
         row2.addWidget(b_open)
 
         row2.addStretch()
         c2.addLayout(row2)
 
-        hint2 = QLabel(
+        h2 = QLabel(
             f"По умолчанию: {default_save_dir()}\n"
             "Здесь будут появляться файлы при нажатии «Сохранить» (Ctrl+S)."
         )
-        hint2.setObjectName("Hint")
-        hint2.setWordWrap(True)
-        c2.addWidget(hint2)
+        h2.setObjectName("Hint")
+        h2.setWordWrap(True)
+        c2.addWidget(h2)
 
         root.addWidget(card2)
 
+        # ─── Карточка: управление в оверлее ───
         card3 = QFrame()
         card3.setObjectName("Card")
         c3 = QVBoxLayout(card3)
-        c3.setContentsMargins(20, 18, 20, 18)
-        c3.setSpacing(10)
+        c3.setContentsMargins(28, 22, 28, 22)
+        c3.setSpacing(14)
 
-        info_title = QLabel("Управление в оверлее")
-        info_title.setObjectName("SectionLabel")
-        c3.addWidget(info_title)
+        s3 = QLabel("УПРАВЛЕНИЕ В ОВЕРЛЕЕ")
+        s3.setObjectName("SectionLabel")
+        s3.setContentsMargins(0, 0, 0, 6)
+        c3.addWidget(s3)
 
         grid = QGridLayout()
-        grid.setHorizontalSpacing(20)
-        grid.setVerticalSpacing(8)
+        grid.setHorizontalSpacing(32)
+        grid.setVerticalSpacing(14)
+        grid.setContentsMargins(4, 6, 4, 6)
         grid.setColumnStretch(0, 0)
         grid.setColumnStretch(1, 1)
 
@@ -1465,41 +1680,50 @@ class SettingsWindow(QWidget):
             k = QLabel(key)
             k.setStyleSheet(
                 f"color:{ACCENT_HOVER}; font-weight:600; "
-                f"background:transparent;"
+                f"font-family: 'JetBrains Mono', 'Cascadia Code', "
+                f"Consolas, monospace; font-size: 12px; "
+                f"background: transparent;"
             )
-            k.setMinimumWidth(180)
-            grid.addWidget(k, i, 0, Qt.AlignLeft | Qt.AlignVCenter)
+            k.setFixedWidth(220)
+            k.setFixedHeight(26)
+            k.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+            grid.addWidget(k, i, 0)
 
             a = QLabel(action)
             a.setObjectName("Hint")
-            a.setWordWrap(True)
-            grid.addWidget(a, i, 1, Qt.AlignLeft | Qt.AlignVCenter)
+            a.setWordWrap(False)
+            a.setFixedHeight(26)
+            a.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+            grid.addWidget(a, i, 1)
 
         c3.addLayout(grid)
         root.addWidget(card3)
 
         root.addStretch()
 
+        # ─── Кнопки ───
         btns = QHBoxLayout()
         btns.setSpacing(10)
 
-        b_reset = QPushButton("Сброс настроек")
+        b_reset = QPushButton("Сбросить")
         b_reset.setCursor(Qt.PointingHandCursor)
-        b_reset.setMinimumHeight(38)
+        b_reset.setMinimumHeight(44)
         b_reset.clicked.connect(self._reset_all)
         btns.addWidget(b_reset)
+
         btns.addStretch()
 
         b_cancel = QPushButton("Отмена")
         b_cancel.setCursor(Qt.PointingHandCursor)
-        b_cancel.setMinimumHeight(38)
+        b_cancel.setMinimumHeight(44)
         b_cancel.clicked.connect(self.close)
         btns.addWidget(b_cancel)
 
         b_save = QPushButton("Сохранить")
         b_save.setObjectName("Primary")
         b_save.setCursor(Qt.PointingHandCursor)
-        b_save.setMinimumHeight(38)
+        b_save.setMinimumHeight(44)
+        b_save.setMinimumWidth(150)
         b_save.clicked.connect(self._save)
         btns.addWidget(b_save)
         root.addLayout(btns)
@@ -1509,10 +1733,31 @@ class SettingsWindow(QWidget):
         ver.setAlignment(Qt.AlignCenter)
         root.addWidget(ver)
 
+    # ─── Геометрия фона ───
+    def resizeEvent(self, e):
+        super().resizeEvent(e)
+        self.bg.setGeometry(self.rect())
+
+    # ─── Перетаскивание окна ───
+    def mousePressEvent(self, e):
+        if e.button() == Qt.LeftButton and e.position().y() < 64:
+            self._drag_pos = (e.globalPosition().toPoint()
+                              - self.frameGeometry().topLeft())
+            e.accept()
+
+    def mouseMoveEvent(self, e):
+        if self._drag_pos is not None and (e.buttons() & Qt.LeftButton):
+            self.move(e.globalPosition().toPoint() - self._drag_pos)
+            e.accept()
+
+    def mouseReleaseEvent(self, e):
+        self._drag_pos = None
+
+    # ─── Обработчики ───
     def _refresh_current_key(self):
         hk = self.hotkey_edit.text().strip() or self.cfg["hotkey"]
         self.current_key_lbl.setText(
-            f"Текущая комбинация: {pretty_hotkey(hk)}"
+            f"Текущая комбинация:   {pretty_hotkey(hk)}"
         )
 
     def _on_hotkey_changed(self, _):
@@ -1551,10 +1796,11 @@ class SettingsWindow(QWidget):
 
     def showEvent(self, e):
         super().showEvent(e)
+        self.bg.setGeometry(self.rect())
         eff = QGraphicsOpacityEffect(self)
         self.setGraphicsEffect(eff)
         anim = QPropertyAnimation(eff, b"opacity", self)
-        anim.setDuration(220)
+        anim.setDuration(260)
         anim.setStartValue(0.0)
         anim.setEndValue(1.0)
         anim.setEasingCurve(QEasingCurve.OutCubic)
@@ -1605,12 +1851,7 @@ class SettingsWindow(QWidget):
 # ═══════════════════════════════════════════════════════════════════
 
 def _is_already_running() -> bool:
-    """Проверяет, запущен ли уже Flick.
-
-    Пытается подключиться к именованному сокету. Если получилось —
-    отправляет команду 'show' и возвращает True. Первый экземпляр
-    оставляет сервер открытым, второй экземпляр к нему подключается.
-    """
+    """Проверяет, запущен ли уже Flick."""
     sock = QLocalSocket()
     sock.connectToServer(SINGLE_INSTANCE_KEY)
     if sock.waitForConnected(300):
@@ -1638,11 +1879,7 @@ class App(QObject):
         self.app.setStyle("Fusion")
 
         # ─── Проверка на уже запущенный экземпляр ───
-        # Проводим её сразу после QApplication, но до создания трея
-        # и регистрации хоткеев.
         if _is_already_running():
-            # На Windows QLocalServer не удаляет сокет автоматически,
-            # но здесь мы в «втором» экземпляре — просто выходим.
             QMessageBox.information(
                 None,
                 APP_NAME,
@@ -1652,9 +1889,6 @@ class App(QObject):
             )
             sys.exit(0)
 
-        # Становимся «первым» экземпляром — открываем сервер
-        # с тем же именем. На случай, если старый процесс упал
-        # без очистки сокета, сначала снимаем регистрацию.
         QLocalServer.removeServer(SINGLE_INSTANCE_KEY)
         self.server = QLocalServer()
         self.server.newConnection.connect(self._on_new_connection)
@@ -1674,7 +1908,6 @@ class App(QObject):
         self.settings_win = None
 
     def _on_new_connection(self):
-        """Второй экземпляр постучался — показываем уведомление."""
         while self.server.hasPendingConnections():
             conn = self.server.nextPendingConnection()
             conn.readyRead.connect(
