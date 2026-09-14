@@ -1,20 +1,22 @@
+<!--
+  Flick — README
+  Если хочешь, замени ссылки на скриншоты и бейдж лицензии.
+-->
+
 <div align="center">
 
-<img src="flick.ico" alt="Flick" width="120" height="120">
-
-# Flick
+# ⚡ Flick
 
 **Скриншоты на лету.**
 
 Лёгкий скриншотер для Windows с оверлеем, редактором и поддержкой игр.
 
-[![Version](https://img.shields.io/badge/version-1.2.0-a855f7?style=flat-square)](https://github.com/qweezyexe/flick/releases)
-[![Windows](https://img.shields.io/badge/platform-Windows%2010%20%2F%2011-9d95b0?style=flat-square&logo=windows&logoColor=white)](https://github.com/qweezyexe/flick)
-[![Python](https://img.shields.io/badge/python-3.10+-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
-[![PySide6](https://img.shields.io/badge/PySide6-6.6+-41CD52?style=flat-square&logo=qt&logoColor=white)](https://doc.qt.io/qtforpython/)
-[![License](https://img.shields.io/badge/license-MIT-a855f7?style=flat-square)](LICENSE)
+[![Platform](https://img.shields.io/badge/platform-Windows-0078D6?logo=windows&logoColor=white)](https://github.com/qweezyexe/flick)
+[![Version](https://img.shields.io/badge/version-1.2.0-7C3AED)](https://github.com/qweezyexe/flick/releases)
+[![Python](https://img.shields.io/badge/python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![License](https://img.shields.io/badge/license-MIT-6D28D9)](LICENSE)
 
-[🌐 Сайт](https://flick-screens.netlify.app/) · [⬇️ Скачать](https://flick-screens.netlify.app/#download) · [🐛 Сообщить о баге](https://github.com/qweezyexe/flick/issues) · [💜 Автор](https://github.com/qweezyexe)
+[🌐 Сайт](https://flick-screens.netlify.app) · [⬇️ Скачать](https://github.com/qweezyexe/flick/releases) · [🐛 Сообщить о баге](https://github.com/qweezyexe/flick/issues) · [💜 Автор](https://github.com/qweezyexe)
 
 </div>
 
@@ -22,17 +24,32 @@
 
 ## 🎬 Что это
 
-**Flick** — минималистичный скриншотер для Windows в тёмно-фиолетовой теме. Один хоткей — и экран затемняется, ты выделяешь область, рисуешь стрелку, ставишь цифру, а картинка уже в буфере.
+**Flick** — минималистичный скриншотер для Windows в тёмно-фиолетовой теме.  
+Один хоткей — и экран затемняется, ты выделяешь область, рисуешь стрелку, ставишь цифру, а картинка уже в буфере.
 
-Работает даже в играх — через DXGI Desktop Duplication API, тот же механизм, что у OBS и Windows Game Bar.
+Работает даже в играх — через **DXGI Desktop Duplication API**, тот же механизм, что у OBS и Windows Game Bar.
 
-**Посмотреть вживую:** [flick-screens.netlify.app](https://flick-screens.netlify.app/)
+> **Посмотреть вживую:** [flick-screens.netlify.app](https://flick-screens.netlify.app)
+
+---
+
+## 📖 Оглавление
+
+- [✨ Возможности](#-возможности)
+- [🚀 Установка](#-установка)
+- [⌨️ Горячие клавиши](#️-горячие-клавиши)
+- [🛠️ Сборка из исходников](#️-сборка-из-исходников)
+- [📁 Структура проекта](#-структура-проекта)
+- [🧰 Технологии](#-технологии)
+- [❓ FAQ](#-faq)
+- [🤝 Contributing](#-contributing)
+- [📄 Лицензия](#-лицензия)
 
 ---
 
 ## ✨ Возможности
 
-|  |  |
+| | |
 |---|---|
 | 🎮 **Работает в играх** | Захват через DXGI Desktop Duplication. DirectX 11/12, Vulkan, Borderless Fullscreen |
 | ⌨️ **3 глобальных хоткея** | Оверлей, полный экран в буфер, полный экран в файл — каждый на своё сочетание |
@@ -56,13 +73,13 @@
 
 ### Готовый установщик (рекомендуется)
 
-1. Скачай архив **`Flick-v1.2.0-Windows.zip`** с [сайта](https://flick-screens.netlify.app/#download) или из [Releases](https://github.com/qweezyexe/flick/releases)
+1. Скачай архив **`Flick-v1.2.0-Windows.zip`** с [сайта](https://flick-screens.netlify.app) или из [Releases](https://github.com/qweezyexe/flick/releases)
 2. Распакуй архив (правый клик → «Извлечь всё»)
 3. Запусти **`Flick-Setup-1.2.0-by-qweezy.exe`**
 4. Следуй мастеру установки
 5. Нажми **F7**
 
-Python и библиотеки не нужны — всё внутри.
+> Python и библиотеки не нужны — всё внутри.
 
 ### Из исходников
 
