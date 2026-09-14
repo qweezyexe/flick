@@ -1,0 +1,40 @@
+name: Realse
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version (e.g. 1.2.3)'
+        required: true
+        default: '1.0.0'
+
+jobs:
+  make_realse:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: checkout
+        uses: actions/checkout@v7.0.1
+    
+      - name: build
+        run: chmod +x build_exe.sh && ./build_exe.sh
+
+      - name: Create tag
+        run: |
+          VERSION=${{ github.event.inputs.version }}
+          TAG="v${VERSION}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "$TAG"
+          git push origin "$TAG"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="v${{ github.event.inputs.version }}"
+          gh release create "$TAG" \
+            --title "$TAG" \
+            --generate-notes \
+            dist/*  # или путь к твоим артефактам
